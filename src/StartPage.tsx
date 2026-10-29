@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ask, openTextFile, tell } from './native'
 import { deleteProject, listProjects, PROJECT_FILE, projectFromFile, saveProject, type Project, type ProjectSummary } from './project'
 import { PLATFORMS, type Platform } from './render'
@@ -12,27 +12,19 @@ const when = (t: number) =>
 
 /** Welcome window (new project, recent projects) and the new-project template chooser. */
 export function StartPage({ onOpen, onCreate }: { onOpen: (id: string) => void; onCreate: (p: Project) => void }) {
-  const [view, setView] = useState<'welcome' | 'new'>('welcome')
+  const chooser = useRef<HTMLDialogElement>(null)
   const [recent, setRecent] = useState<ProjectSummary[] | null>(null)
   useEffect(() => {
     listProjects().then(setRecent, () => setRecent([]))
   }, [])
 
-  if (view === 'new') return <Chooser onCancel={() => setView('welcome')} onCreate={onCreate} />
-
   return (
-    <div className="start">
-      <section className="welcome">
-        <div className="app-icon" aria-hidden>
-          <svg viewBox="0 0 64 64" width="72" height="72">
-            <rect x="4" y="4" width="56" height="56" rx="14" fill="var(--accent)" />
-            <rect x="22" y="12" width="20" height="40" rx="5" fill="none" stroke="#fff" strokeWidth="3" />
-            <rect x="28" y="16" width="8" height="3" rx="1.5" fill="#fff" />
-          </svg>
-        </div>
+    <div className="start" data-tauri-drag-region>
+      <section className="welcome" data-tauri-drag-region>
+        <img className="app-icon" src="/favicon.svg" width="72" height="72" alt="" />
         <h1>Screenshot Studio</h1>
         <p className="hint">App Store screenshots for iPhone, iPad and Mac</p>
-        <button className="start-action" onClick={() => setView('new')}>
+        <button className="start-action" onClick={() => chooser.current!.showModal()}>
           <strong>Create New Project…</strong>
           <small>Start from a template</small>
         </button>
@@ -55,12 +47,12 @@ export function StartPage({ onOpen, onCreate }: { onOpen: (id: string) => void; 
         </button>
       </section>
 
-      <section className="recents">
+      <section className="recents" data-tauri-drag-region>
         <h2>Recent projects</h2>
         {recent?.length === 0 && <p className="hint">No projects yet. Create one to get started.</p>}
         <ul>
-          {recent?.map((p) => (
-            <li key={p.id}>
+          {recent?.map((p, i) => (
+            <li key={p.id} style={{ '--i': i } as CSSProperties}>
               <button className="recent" onClick={() => onOpen(p.id)}>
                 {p.thumb ? <img src={p.thumb} alt="" /> : <span className="thumb-empty" />}
                 <span>
@@ -83,6 +75,9 @@ export function StartPage({ onOpen, onCreate }: { onOpen: (id: string) => void; 
           ))}
         </ul>
       </section>
+      <dialog ref={chooser} className="chooser" onClick={(e) => e.target === chooser.current && chooser.current!.close()}>
+        <Chooser onCancel={() => chooser.current!.close()} onCreate={onCreate} />
+      </dialog>
     </div>
   )
 }
@@ -110,7 +105,7 @@ function Chooser({ onCancel, onCreate }: { onCancel: () => void; onCreate: (p: P
     })
 
   return (
-    <div className="chooser">
+    <>
       <h2>Choose a template for your new project</h2>
       <nav className="platform-tabs big">
         {(['all', ...ALL_PLATFORMS] as Tab[]).map((t) => (
@@ -172,6 +167,6 @@ function Chooser({ onCancel, onCreate }: { onCancel: () => void; onCreate: (p: P
         <button type="button" onClick={onCancel}>Cancel</button>
         <button type="submit" className="primary" disabled={!chosen.length}>Create</button>
       </form>
-    </div>
+    </>
   )
 }

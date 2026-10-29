@@ -13,9 +13,52 @@ export interface Slide {
   angle: number // gradient angle, degrees
   textColor: string
   layout: Layout
+  titleBox?: TextBox
+  subtitleBox?: TextBox
+  items?: Item[] // objects added on top of the built-in ones
+  layers?: Part[] // what's on the slide, back to front; a part left out is deleted
   image: HTMLImageElement | null
   outerImage: HTMLImageElement | null // foldables' outer display
   device: DevicePose
+  translations?: Record<string, Translation> // other languages' text; everything else is shared
+}
+
+export interface Translation { title: string; subtitle: string; items?: Record<string, string> }
+
+/** An element on a slide: 'title', 'subtitle', 'device' or an item's id. The background sits behind them all. */
+export type Part = string
+export type TextPart = 'title' | 'subtitle'
+export const BUILT_IN_PARTS: Part[] = ['title', 'subtitle', 'device']
+
+/** An added object. Positions are its centre, as fractions of slide width and height; sizes are fractions of slide width. */
+export interface Item {
+  id: string
+  kind: 'text' | 'rect' | 'ellipse' | 'image' | 'device'
+  x: number
+  y: number
+  w: number // text wraps at this width
+  h: number // shapes and images
+  size?: number // text: font size
+  text?: string
+  color?: string // text (the slide's text colour if unset) and shapes
+  image?: HTMLImageElement | null // images, and devices' screenshots
+  outerImage?: HTMLImageElement | null // devices: a foldable's outer display
+  device?: DevicePose // devices: placed by x, y; its size is a fraction of slide width
+}
+/** A text's offset from where the layout puts it (fractions of slide width/height) and its size, 1 being the layout's. */
+export interface TextBox { x: number; y: number; scale: number }
+export const NO_BOX: TextBox = { x: 0, y: 0, scale: 1 }
+export const layersOf = (s: Pick<Slide, 'layers'>): Part[] => s.layers ?? BUILT_IN_PARTS
+
+/** The slide with `lang`'s text, falling back to the primary language's. */
+export function localize(s: Slide, lang?: string): Slide {
+  const t = lang ? s.translations?.[lang] : undefined
+  return t ? {
+    ...s,
+    title: t.title || s.title,
+    subtitle: t.subtitle || s.subtitle,
+    items: s.items?.map((i) => (t.items?.[i.id] ? { ...i, text: t.items[i.id] } : i)),
+  } : s
 }
 
 export type Style = Pick<Slide, 'bg1' | 'bg2' | 'angle' | 'textColor' | 'layout'>
@@ -60,7 +103,7 @@ export interface Target {
   slides: Slide[]
 }
 
-const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif'
+export const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif'
 
 function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   const lines: string[] = []
@@ -78,26 +121,26 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string
   return lines
 }
 
-// Draws a text block centered horizontally starting at y; returns the y below it.
-function drawText(ctx: CanvasRenderingContext2D, text: string, y: number, w: number, size: number, weight: number) {
-  if (!text.trim()) return y
-  ctx.font = `${weight} ${size}px ${FONT}`
-  const lh = size * 1.15
-  for (const line of wrap(ctx, text, w * 0.84)) {
-    ctx.fillText(line, w / 2, y)
-    y += lh
-  }
-  return y
-}
-
 function textHeight(ctx: CanvasRenderingContext2D, text: string, w: number, size: number, weight: number) {
   if (!text.trim()) return 0
   ctx.font = `${weight} ${size}px ${FONT}`
   return wrap(ctx, text, w * 0.84).length * size * 1.15
 }
 
-/** Draws the slide; returns the device centre, flat half-height and drawn box, in slide px, for the handles. */
-export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h: number) {
+export const TEXT_STYLE = { title: { weight: 800, alpha: 1 }, subtitle: { weight: 500, alpha: 0.85 }, item: { weight: 600, alpha: 1 } } as const
+
+/** Where an element landed, in slide px; texts also say how they're set, for typing on top of them. */
+export interface Anchor {
+  x: number
+  y: number
+  w: number
+  h: number
+  text?: { cx: number; wrap: number; size: number; weight: number; alpha: number; color: string; lines: string[] }
+  dev?: { cx: number; cy: number; radius: number } // devices: centre and flat half-height, for the turn grips
+}
+
+/** Draws the slide, leaving out `hide` (the text being edited on top of it). Returns each element's anchor, for the handles. */
+export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h: number, hide?: Part) {
   // background
   const a = (s.angle * Math.PI) / 180
   const r = Math.hypot(w, h) / 2
@@ -108,33 +151,95 @@ export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h:
   ctx.fillStyle = g
   ctx.fillRect(0, 0, w, h)
 
-  // text block
+  /** A centred text block whose first line's top sits at `top`. */
+  const setText = (text: string, cx: number, top: number, wrapW: number, size: number, style: { weight: number; alpha: number }, color: string): Anchor => {
+    ctx.font = `${style.weight} ${size}px ${FONT}`
+    const lines = text.trim() ? wrap(ctx, text, wrapW) : []
+    const lw = Math.max(size * 2, ...lines.map((l) => ctx.measureText(l).width))
+    // an empty text keeps one line's height so it can still be grabbed
+    return { x: cx - lw / 2, y: top, w: lw, h: Math.max(1, lines.length) * size * 1.15, text: { cx, wrap: wrapW, size, color, lines, ...style } }
+  }
+
+  // texts: laid out at their resting spots, so moving or resizing one leaves everything else in place
   const unit = Math.min(w, h * 0.8) // portrait sizes by width; landscape (Mac) is held back by height
-  const titleSize = unit * 0.085, subSize = unit * 0.042, gap = subSize * 0.6, pad = h * 0.06
-  const textH =
-    textHeight(ctx, s.title, w, titleSize, 800) + gap + textHeight(ctx, s.subtitle, w, subSize, 500)
-  const textY = s.layout === 'text-top' ? pad : h - pad - textH
-  ctx.fillStyle = s.textColor
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'top'
-  let y = drawText(ctx, s.title, textY, w, titleSize, 800)
-  ctx.globalAlpha = 0.85
-  drawText(ctx, s.subtitle, y + gap, w, subSize, 500)
-  ctx.globalAlpha = 1
+  const base = { title: unit * 0.085, subtitle: unit * 0.042 }
+  const gap = base.subtitle * 0.6, pad = h * 0.06
+  const titleH = textHeight(ctx, s.title, w, base.title, 800)
+  const baseH = titleH + gap + textHeight(ctx, s.subtitle, w, base.subtitle, 500)
+  const baseY = s.layout === 'text-top' ? pad : h - pad - baseH
+  const lay = (p: TextPart, restY: number) => {
+    const b = s[`${p}Box`] ?? NO_BOX
+    return setText(s[p], w / 2 + b.x * w, restY + b.y * h, w * 0.84 * b.scale, base[p] * b.scale, TEXT_STYLE[p], s.textColor)
+  }
+  const anchors: Record<Part, Anchor> = { title: lay('title', baseY), subtitle: lay('subtitle', baseY + titleH + gap) }
 
   // device: rendered in 3D, bleeding off the edge opposite the text
   const dev = renderDevice(s.device, s.image, s.outerImage, w * s.device.size)
   // Phones keep their resting height so turning never shifts them; a laptop's shape depends
   // so much on its lid that it's laid out by what's actually drawn.
   const tall = dev.laptop ? dev.height : dev.flatHeight
-  const top = s.layout === 'text-top' ? textY + textH + pad * 0.8 : textY - pad * 0.8 - tall
+  const top = s.layout === 'text-top' ? baseY + baseH + pad * 0.8 : baseY - pad * 0.8 - tall
   const cx = w / 2 + s.device.x * w
   const cy = top + tall / 2 + s.device.y * h
-  ctx.save()
-  ctx.shadowColor = 'rgba(0,0,0,0.35)'
-  ctx.shadowBlur = w * 0.05
-  ctx.shadowOffsetY = w * 0.015
-  ctx.drawImage(dev.canvas, cx - dev.width / 2, cy - dev.height / 2, dev.width, dev.height)
-  ctx.restore()
-  return { cx, cy, radius: dev.flatHeight / 2, w: dev.width, h: dev.height }
+  anchors.device = { x: cx - dev.width / 2, y: cy - dev.height / 2, w: dev.width, h: dev.height, dev: { cx, cy, radius: dev.flatHeight / 2 } }
+  const drawn: Record<Part, HTMLCanvasElement> = { device: dev.canvas }
+
+  for (const i of s.items ?? []) {
+    if (i.kind === 'text') {
+      const t = setText(i.text ?? '', i.x * w, 0, i.w * w, (i.size ?? 0.05) * w, TEXT_STYLE.item, i.color ?? s.textColor)
+      anchors[i.id] = { ...t, y: i.y * h - t.h / 2 } // centred on its spot, growing both ways
+    } else if (i.kind === 'device' && i.device) {
+      const d = renderDevice(i.device, i.image ?? null, i.outerImage ?? null, w * i.device.size)
+      const icx = i.x * w, icy = i.y * h
+      drawn[i.id] = d.canvas
+      anchors[i.id] = { x: icx - d.width / 2, y: icy - d.height / 2, w: d.width, h: d.height, dev: { cx: icx, cy: icy, radius: d.flatHeight / 2 } }
+    } else anchors[i.id] = { x: (i.x - i.w / 2) * w, y: i.y * h - (i.h * w) / 2, w: i.w * w, h: i.h * w }
+  }
+
+  for (const p of layersOf(s)) {
+    const at = anchors[p]
+    if (p === hide || !at) continue
+    const item = s.items?.find((i) => i.id === p)
+    ctx.save()
+    if (drawn[p]) {
+      ctx.shadowColor = 'rgba(0,0,0,0.35)'
+      ctx.shadowBlur = w * 0.05
+      ctx.shadowOffsetY = w * 0.015
+      ctx.drawImage(drawn[p], at.x, at.y, at.w, at.h)
+    } else if (at.text) {
+      const t = at.text
+      ctx.font = `${t.weight} ${t.size}px ${FONT}`
+      ctx.fillStyle = t.color
+      ctx.globalAlpha = t.alpha
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      t.lines.forEach((line, n) => ctx.fillText(line, t.cx, at.y + n * t.size * 1.15))
+    } else if (item?.kind === 'image') {
+      if (item.image) ctx.drawImage(item.image, at.x, at.y, at.w, at.h)
+    } else if (item) {
+      ctx.fillStyle = item.color ?? s.textColor
+      ctx.beginPath()
+      if (item.kind === 'ellipse') ctx.ellipse(at.x + at.w / 2, at.y + at.h / 2, at.w / 2, at.h / 2, 0, 0, Math.PI * 2)
+      else ctx.roundRect(at.x, at.y, at.w, at.h, Math.min(at.w, at.h) * 0.12)
+      ctx.fill()
+    }
+    ctx.restore()
+  }
+  return anchors
+}
+
+/** A slide drawn at full size off screen, as a PNG; `scale` shrinks it. */
+export function renderSlide(s: Slide, [w, h]: readonly [number, number], scale = 1) {
+  const full = document.createElement('canvas')
+  full.width = w
+  full.height = h
+  drawSlide(full.getContext('2d')!, s, w, h)
+  let out = full
+  if (scale < 1) {
+    out = document.createElement('canvas')
+    out.width = Math.round(w * scale)
+    out.height = Math.round(h * scale)
+    out.getContext('2d')!.drawImage(full, 0, 0, out.width, out.height)
+  }
+  return new Promise<Blob>((resolve) => out.toBlob((b) => resolve(b!), 'image/png'))
 }

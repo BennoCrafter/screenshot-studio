@@ -7,10 +7,20 @@
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "dialog:default",
     "fs:default",
     "fs:allow-write-file",
     "fs:allow-read-text-file",
-    "fs:allow-write-text-file"
+    "fs:allow-write-text-file",
+    "fs:allow-appdata-read-recursive",
+    "fs:allow-appdata-write-recursive",
+    "fs:allow-read-file",
+    "fs:allow-mkdir",
+    "core:event:default",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "$HOME/**" }, { "path": "/tmp/**" }, { "path": "/private/tmp/**" }, { "path": "/Volumes/**" }]
+    }
   ]
 }

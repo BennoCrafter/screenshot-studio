@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { serveAgent } from './agent'
 import { Editor } from './Editor'
+import { animate } from './motion'
+import { isDesktop } from './native'
 import { openProject, saveProject, thumbnail, type Project } from './project'
 import { StartPage } from './StartPage'
 
@@ -8,6 +11,10 @@ const save = (p: Project) =>
 
 export default function App() {
   const [project, setProject] = useState<Project | null>(null)
+  const latest = useRef(project)
+  useEffect(() => {
+    latest.current = project
+  })
 
   // reopen the project in the URL hash, so a reload lands back in it
   useEffect(() => {
@@ -23,12 +30,29 @@ export default function App() {
   }, [project])
 
   const show = (p: Project | null) => {
-    setProject(p)
+    latest.current = p
+    animate(() => setProject(p))
     history.replaceState(null, '', p ? `#${p.id}` : location.pathname)
   }
 
-  if (!project) return <StartPage onOpen={(id) => openProject(id).then(show)} onCreate={show} />
-  return (
+  // the MCP server: Claude Code drives the same state the UI shows
+  useEffect(() => {
+    if (!isDesktop) return
+    const off = serveAgent({
+      project: () => latest.current,
+      setProject: (p) => (p.id === latest.current?.id ? ((latest.current = p), setProject(p)) : show(p)),
+      open: async (id) => show(await openProject(id)),
+      close: () => {
+        if (latest.current) save(latest.current)
+        show(null)
+      },
+    })
+    return () => void off.then((f) => f())
+  }, [])
+
+  return !project ? (
+    <StartPage onOpen={(id) => openProject(id).then(show)} onCreate={show} />
+  ) : (
     <Editor
       key={project.id}
       project={project}

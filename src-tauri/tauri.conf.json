@@ -18,9 +18,15 @@
         "minWidth": 900,
         "minHeight": 600,
         "resizable": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "transparent": true,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 16, "y": 20 },
+        "hiddenTitle": true,
+        "windowEffects": { "effects": ["sidebar"], "state": "followsWindowActiveState" }
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": null
     }

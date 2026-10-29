@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { PLATFORMS, type Platform } from './render'
 import { BUILT_IN, loadCustom, saveCustom, type Template } from './templates'
 
@@ -30,9 +30,12 @@ export function TemplateCard({ t, platform, selected, onPick, onDelete }: {
   )
 }
 
-/** Saved templates, kept in sync with localStorage. */
+/** Saved templates, kept in sync with storage (a file on the desktop, localStorage in the browser). */
 export function useCustomTemplates() {
-  const [custom, setCustom] = useState(loadCustom)
+  const [custom, setCustom] = useState<Template[]>([])
+  useEffect(() => {
+    loadCustom().then(setCustom)
+  }, [])
   const store = (list: Template[]) => {
     setCustom(list)
     saveCustom(list)

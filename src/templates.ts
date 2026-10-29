@@ -4,9 +4,10 @@
 
 import { DEVICE_BY_ID, restFold } from './devices/models'
 import type { DevicePose } from './devices/render3d'
+import { isDesktop } from './native'
 import { PLATFORMS, THEMES, type Platform, type SizeName, type Slide, type Style, type Target } from './render'
 
-export type SlideData = Omit<Slide, 'id' | 'image' | 'outerImage'>
+export type SlideData = Omit<Slide, 'id' | 'image' | 'outerImage' | 'translations'>
 export interface TargetData {
   platform: Platform
   size: SizeName
@@ -115,24 +116,44 @@ export function adaptTarget(from: Target, platform: Platform): Target {
   }
 }
 
-export const toData = ({ id: _id, image: _i, outerImage: _o, ...data }: Slide): SlideData => data
+// added images and screenshots stay with the project; a template keeps everything else
+export const toData = ({ id: _id, image: _i, outerImage: _o, translations: _t, ...data }: Slide): SlideData => {
+  const gone = new Set(data.items?.filter((i) => i.kind === 'image').map((i) => i.id))
+  return {
+    ...data,
+    items: data.items?.filter((i) => !gone.has(i.id)).map((i) => (i.kind === 'device' ? { ...i, image: null, outerImage: null } : i)),
+    layers: data.layers?.filter((p) => !gone.has(p)),
+  }
+}
 
 // ---- saved templates --------------------------------------------------------------
 
 const KEY = 'screenshot-studio:templates'
+const FILE = 'templates.json' // desktop: in the app data folder, next to projects/
 
-export function loadCustom(): Template[] {
+async function read(): Promise<string | null> {
+  if (!isDesktop) return localStorage.getItem(KEY)
+  const { BaseDirectory, exists, readTextFile } = await import('@tauri-apps/plugin-fs')
+  const opt = { baseDir: BaseDirectory.AppData }
+  return (await exists(FILE, opt)) ? readTextFile(FILE, opt) : null
+}
+
+export async function loadCustom(): Promise<Template[]> {
   try {
-    const list: Template[] = JSON.parse(localStorage.getItem(KEY) ?? '[]')
+    const list: Template[] = JSON.parse((await read()) ?? '[]')
     return list.filter((t) => t.targets) // drop the older single-platform format
   } catch {
     return []
   }
 }
 
-export function saveCustom(list: Template[]) {
+export async function saveCustom(list: Template[]) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(list))
+    if (!isDesktop) return localStorage.setItem(KEY, JSON.stringify(list))
+    const { BaseDirectory, mkdir, writeTextFile } = await import('@tauri-apps/plugin-fs')
+    const opt = { baseDir: BaseDirectory.AppData }
+    await mkdir('', { ...opt, recursive: true })
+    await writeTextFile(FILE, JSON.stringify(list), opt)
   } catch {
     // storage full or blocked; templates just won't persist
   }
