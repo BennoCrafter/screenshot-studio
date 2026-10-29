@@ -1,0 +1,177 @@
+import { useEffect, useState } from 'react'
+import { ask, openTextFile, tell } from './native'
+import { deleteProject, listProjects, PROJECT_FILE, projectFromFile, saveProject, type Project, type ProjectSummary } from './project'
+import { PLATFORMS, type Platform } from './render'
+import { TemplateCard, useCustomTemplates } from './TemplateGallery'
+import { ALL_PLATFORMS, BUILT_IN, toTarget, type Template } from './templates'
+
+type Tab = 'all' | Platform
+
+const when = (t: number) =>
+  new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(t)
+
+/** Welcome window (new project, recent projects) and the new-project template chooser. */
+export function StartPage({ onOpen, onCreate }: { onOpen: (id: string) => void; onCreate: (p: Project) => void }) {
+  const [view, setView] = useState<'welcome' | 'new'>('welcome')
+  const [recent, setRecent] = useState<ProjectSummary[] | null>(null)
+  useEffect(() => {
+    listProjects().then(setRecent, () => setRecent([]))
+  }, [])
+
+  if (view === 'new') return <Chooser onCancel={() => setView('welcome')} onCreate={onCreate} />
+
+  return (
+    <div className="start">
+      <section className="welcome">
+        <div className="app-icon" aria-hidden>
+          <svg viewBox="0 0 64 64" width="72" height="72">
+            <rect x="4" y="4" width="56" height="56" rx="14" fill="var(--accent)" />
+            <rect x="22" y="12" width="20" height="40" rx="5" fill="none" stroke="#fff" strokeWidth="3" />
+            <rect x="28" y="16" width="8" height="3" rx="1.5" fill="#fff" />
+          </svg>
+        </div>
+        <h1>Screenshot Studio</h1>
+        <p className="hint">App Store screenshots for iPhone, iPad and Mac</p>
+        <button className="start-action" onClick={() => setView('new')}>
+          <strong>Create New Project…</strong>
+          <small>Start from a template</small>
+        </button>
+        <button
+          className="start-action"
+          onClick={async () => {
+            const text = await openTextFile(PROJECT_FILE)
+            if (text === null) return
+            try {
+              const p = await projectFromFile(text)
+              await saveProject(p)
+              onCreate(p)
+            } catch {
+              await tell('That file isn\'t a Screenshot Studio project.')
+            }
+          }}
+        >
+          <strong>Open Project File…</strong>
+          <small>A .ssproj file saved from Screenshot Studio</small>
+        </button>
+      </section>
+
+      <section className="recents">
+        <h2>Recent projects</h2>
+        {recent?.length === 0 && <p className="hint">No projects yet. Create one to get started.</p>}
+        <ul>
+          {recent?.map((p) => (
+            <li key={p.id}>
+              <button className="recent" onClick={() => onOpen(p.id)}>
+                {p.thumb ? <img src={p.thumb} alt="" /> : <span className="thumb-empty" />}
+                <span>
+                  <strong>{p.name}</strong>
+                  <small>{p.platforms.map((x) => PLATFORMS[x].label).join(' · ')} — {when(p.updated)}</small>
+                </span>
+              </button>
+              <button
+                className="tpl-delete"
+                title="Delete project"
+                onClick={async () => {
+                  if (!(await ask(`Delete “${p.name}”? This can't be undone.`))) return
+                  await deleteProject(p.id)
+                  setRecent((r) => r!.filter((x) => x.id !== p.id))
+                }}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  )
+}
+
+function Chooser({ onCancel, onCreate }: { onCancel: () => void; onCreate: (p: Project) => void }) {
+  const [custom, store] = useCustomTemplates()
+  const [tab, setTab] = useState<Tab>('all')
+  const templates = [...BUILT_IN, ...custom].filter((t) => tab === 'all' || t.targets[tab])
+  const [picked, setPicked] = useState<Template>(BUILT_IN[1])
+  const [name, setName] = useState('My App')
+  const available = ALL_PLATFORMS.filter((p) => picked.targets[p])
+  const defaults = (t: Template, tb: Tab) => ALL_PLATFORMS.filter((p) => t.targets[p] && (tb === 'all' || tb === p))
+  const [chosen, setChosen] = useState<Platform[]>(defaults(picked, tab))
+
+  const pick = (t: Template, tb = tab) => {
+    setPicked(t)
+    setChosen(defaults(t, tb))
+  }
+  const create = () =>
+    onCreate({
+      id: crypto.randomUUID(),
+      name: name.trim() || 'Untitled',
+      updated: Date.now(),
+      targets: chosen.map((p) => toTarget(picked.targets[p]!)),
+    })
+
+  return (
+    <div className="chooser">
+      <h2>Choose a template for your new project</h2>
+      <nav className="platform-tabs big">
+        {(['all', ...ALL_PLATFORMS] as Tab[]).map((t) => (
+          <span key={t} className={tab === t ? 'on' : ''}>
+            <button
+              onClick={() => {
+                setTab(t)
+                const first = [...BUILT_IN, ...custom].find((x) => x.id === picked.id && (t === 'all' || x.targets[t]))
+                  ?? [...BUILT_IN, ...custom].find((x) => t === 'all' || x.targets[t])!
+                pick(first, t)
+              }}
+            >
+              {t === 'all' ? 'Multiplatform' : PLATFORMS[t].label}
+            </button>
+          </span>
+        ))}
+      </nav>
+
+      <div className="tpl-grid chooser-grid">
+        {templates.map((t) => (
+          <TemplateCard
+            key={t.id}
+            t={t}
+            platform={tab === 'all' ? undefined : tab}
+            selected={t.id === picked.id}
+            onPick={() => pick(t)}
+            onDelete={t.custom ? () => store(custom.filter((c) => c.id !== t.id)) : undefined}
+          />
+        ))}
+      </div>
+      <p className="hint">{picked.description}</p>
+
+      <form
+        className="chooser-footer"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (chosen.length) create()
+        }}
+      >
+        <label>
+          Project name
+          <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        </label>
+        <fieldset>
+          <legend>Platforms</legend>
+          {ALL_PLATFORMS.map((p) => (
+            <label key={p} className="check">
+              <input
+                type="checkbox"
+                disabled={!available.includes(p)}
+                checked={chosen.includes(p)}
+                onChange={(e) => setChosen((c) => (e.target.checked ? ALL_PLATFORMS.filter((x) => x === p || c.includes(x)) : c.filter((x) => x !== p)))}
+              />
+              {PLATFORMS[p].label}
+            </label>
+          ))}
+        </fieldset>
+        <span className="spacer" />
+        <button type="button" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="primary" disabled={!chosen.length}>Create</button>
+      </form>
+    </div>
+  )
+}
