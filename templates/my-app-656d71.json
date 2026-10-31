@@ -1,0 +1,163 @@
+{
+  "id": "my-app-656d71",
+  "name": "My App",
+  "description": "Saved from a project.",
+  "targets": {
+    "iphone": {
+      "platform": "iphone",
+      "size": "iPhone 6.9\"",
+      "slides": [
+        {
+          "bg1": "#1e1b4b",
+          "bg2": "#4c1d95",
+          "angle": 160,
+          "textColor": "#ffffff",
+          "layout": "text-top",
+          "title": "Plan your day in seconds",
+          "subtitle": "Everything in one calm place",
+          "device": {
+            "model": "iphone-18-pro-max",
+            "finish": "glacier",
+            "yaw": 0,
+            "pitch": 0,
+            "roll": 0,
+            "x": 0,
+            "y": 0,
+            "size": 0.74,
+            "fold": 180
+          },
+          "image": null,
+          "outerImage": null
+        },
+        {
+          "bg1": "#1e1b4b",
+          "bg2": "#4c1d95",
+          "angle": 160,
+          "textColor": "#ffffff",
+          "layout": "text-top",
+          "title": "Stay on track",
+          "subtitle": "Gentle reminders, never noise",
+          "device": {
+            "model": "iphone-18-pro-max",
+            "finish": "glacier",
+            "yaw": 0,
+            "pitch": 0,
+            "roll": 0,
+            "x": 0,
+            "y": 0,
+            "size": 0.74,
+            "fold": 180
+          },
+          "image": null,
+          "outerImage": null
+        },
+        {
+          "bg1": "#1e1b4b",
+          "bg2": "#4c1d95",
+          "angle": 160,
+          "textColor": "#ffffff",
+          "layout": "text-top",
+          "title": "Share with your team",
+          "subtitle": "Invite anyone in one tap",
+          "device": {
+            "model": "iphone-18-pro-max",
+            "finish": "glacier",
+            "yaw": 0,
+            "pitch": 0,
+            "roll": 0,
+            "x": 0,
+            "y": 0,
+            "size": 0.74,
+            "fold": 180
+          },
+          "image": null,
+          "outerImage": null
+        }
+      ]
+    },
+    "duo": {
+      "platform": "duo",
+      "size": "iPhone Duo inner",
+      "slides": [
+        {
+          "bg1": "#fafaf9",
+          "bg2": "#e7e5e4",
+          "angle": 180,
+          "textColor": "#1c1917",
+          "layout": "text-bottom",
+          "title": "Your headline here",
+          "subtitle": "A short line that explains the benefit",
+          "device": {
+            "model": "iphone-duo",
+            "finish": "night-sky",
+            "yaw": 0,
+            "pitch": 0,
+            "roll": 0,
+            "x": 0,
+            "y": 0,
+            "size": 0.9,
+            "fold": 180
+          },
+          "image": null,
+          "outerImage": null
+        }
+      ]
+    },
+    "ipad": {
+      "platform": "ipad",
+      "size": "iPad 13\"",
+      "slides": [
+        {
+          "bg1": "#fafaf9",
+          "bg2": "#e7e5e4",
+          "angle": 180,
+          "textColor": "#1c1917",
+          "layout": "text-bottom",
+          "title": "Your headline here",
+          "subtitle": "A short line that explains the benefit",
+          "device": {
+            "model": "ipad-pro-13",
+            "finish": "space-black",
+            "yaw": 0,
+            "pitch": 0,
+            "roll": 0,
+            "x": 0,
+            "y": 0,
+            "size": 0.8,
+            "fold": 180
+          },
+          "image": null,
+          "outerImage": null
+        }
+      ]
+    },
+    "mac": {
+      "platform": "mac",
+      "size": "Mac 2880×1800",
+      "slides": [
+        {
+          "bg1": "#fafaf9",
+          "bg2": "#e7e5e4",
+          "angle": 180,
+          "textColor": "#1c1917",
+          "layout": "text-bottom",
+          "title": "Your headline here",
+          "subtitle": "A short line that explains the benefit",
+          "device": {
+            "model": "macbook-pro-14",
+            "finish": "space-black",
+            "yaw": 0,
+            "pitch": 14,
+            "roll": 0,
+            "x": 0,
+            "y": 0,
+            "size": 0.46,
+            "fold": 110
+          },
+          "image": null,
+          "outerImage": null
+        }
+      ]
+    }
+  }
+}
