@@ -4,6 +4,7 @@ import { Editor } from './Editor'
 import { animate } from './motion'
 import { isDesktop } from './native'
 import { openProject, saveProject, thumbnail, type Project } from './project'
+import { Settings } from './Settings'
 import { StartPage } from './StartPage'
 
 const save = (p: Project) =>
@@ -50,7 +51,9 @@ export default function App() {
     return () => void off.then((f) => f())
   }, [])
 
-  return !project ? (
+  return <>
+    <Settings />
+    {!project ? (
     <StartPage onOpen={(id) => openProject(id).then(show)} onCreate={show} />
   ) : (
     <Editor
@@ -62,5 +65,6 @@ export default function App() {
         show(null)
       }}
     />
-  )
+  )}
+  </>
 }

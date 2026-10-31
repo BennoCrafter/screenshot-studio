@@ -2,10 +2,10 @@
 // MCP client) to here; the tools read and change the live project, so edits show up at once.
 
 import { DEVICES, DEVICE_BY_ID } from './devices/models'
-import { deleteProject, LANGUAGES, languagesOf, listProjects, loadImage, type Project } from './project'
-import { localize, PLATFORMS, renderSlide, SIZES, THEMES, type Item, type Platform, type Slide, type Target } from './render'
+import { deleteProject, LANGUAGES, languagesOf, listProjects, loadImage, typeOfName, type Project } from './project'
+import { localize, PLATFORMS, renderSlide, SIZES, THEMES, type Item, type Style, type Platform, type Slide, type Target } from './render'
 import type { DevicePose } from './devices/render3d'
-import { ALL_PLATFORMS, BLANK, BUILT_IN, loadCustom, poseFor, toTarget } from './templates'
+import { ALL_PLATFORMS, BLANK, BUILT_IN, loadCustom, loadThemes, poseFor, saveTheme, toTarget } from './templates'
 
 export const MCP_URL = 'http://127.0.0.1:7457/mcp'
 
@@ -18,6 +18,13 @@ export interface Host {
 }
 
 type Json = Record<string, unknown>
+
+/** A tool call Claude wants to make that needs the user's OK; the chat shows it and resolves it. */
+export interface Approval { tool: string; input: Json; resolve: (ok: boolean) => void }
+let askUser: ((a: Approval) => void) | null = null
+export const onApproval = (fn: typeof askUser) => (askUser = fn)
+export const APPROVE_TOOL = 'mcp__screenshot-studio__approve'
+
 type Content = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
 
 const text = (v: unknown): Content[] => [{ type: 'text', text: typeof v === 'string' ? v : JSON.stringify(v, null, 1) }]
@@ -55,17 +62,22 @@ async function reference() {
       id: d.id, label: d.label, family: d.family, finishes: d.finishes.map((f) => f.id),
       ...(d.fold && { foldable: true }), ...(d.laptop && { laptop: true }), ...(d.outer && { outerScreen: true }),
     })),
-    themes: THEMES,
+    themes: await loadThemes(),
     languages: LANGUAGES,
     templates: [...BUILT_IN, ...(await loadCustom())].map((t) => ({ id: t.id, name: t.name, description: t.description, platforms: Object.keys(t.targets) })),
   }
 }
 
+/** An image from a local path or a web URL (fetched natively, so other sites' CORS rules don't apply). */
 async function imageFrom(path: string) {
+  if (/^https?:\/\//.test(path)) {
+    const { fetch } = await import('@tauri-apps/plugin-http')
+    const res = await fetch(path)
+    if (!res.ok) throw new Error(`Couldn't download ${path}: HTTP ${res.status}`)
+    return loadImage(await res.blob()).catch(() => { throw new Error(`${path} isn't an image`) })
+  }
   const { readFile } = await import('@tauri-apps/plugin-fs')
-  const ext = path.split('.').pop()!.toLowerCase()
-  const type = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
-  return loadImage(new Blob([await readFile(path)], { type }))
+  return loadImage(new Blob([await readFile(path)], { type: typeOfName(path) }))
 }
 
 /** Rebuilds the project from the agent's JSON, filling in defaults and loading screenshots from paths. */
@@ -118,6 +130,15 @@ async function fromAgent(prev: Project, input: Json): Promise<Project> {
   }
 }
 
+function applyTheme(host: Host, { bg1, bg2, angle, textColor, layout }: Style, platform?: string) {
+  const p = current(host)
+  if (platform) targetOf(p, platform)
+  host.setProject({
+    ...p,
+    targets: p.targets.map((t) => (platform && t.platform !== platform ? t : { ...t, slides: t.slides.map((s) => ({ ...s, bg1, bg2, angle, textColor, layout })) })),
+  })
+}
+
 const base64 = async (b: Blob) => {
   const bytes = new Uint8Array(await b.arrayBuffer())
   let s = ''
@@ -142,10 +163,10 @@ const TOOLS: { name: string; description: string; inputSchema: Json; run: (host:
   {
     name: 'update_project',
     description: `Replace the open project's name and targets with the given JSON, in the shape get_state returns. The app updates live and autosaves.
-languages: App Store language codes; the first is the primary. Each target: { platform, size, slides }. Each slide: { id?, title, subtitle, bg1, bg2 (hex), angle (gradient degrees), textColor, layout: "text-top" | "text-bottom", titleBox?, subtitleBox? ({ x, y: offset from the layout spot as a fraction of slide width/height, scale: 1 = default size }), layers? (what's on the slide, back to front: "title", "subtitle", "device" and item ids; leaving one out deletes it), items? (added objects: { id?, kind: "text" | "rect" | "ellipse" | "image" | "device", x, y: centre as fractions of slide width/height, w, h: fractions of slide width, size?: text font size as a fraction of slide width, text?, color?, image?, device? (a device pose like the slide's; its size is a fraction of slide width), outerImage? }; to show one it must also be in layers by id; translations[lang].items maps item ids to translated text), device, image?, outerImage? }.
+languages: App Store language codes; the first is the primary. Each target: { platform, size, slides }. Each slide: { id?, title, subtitle, bg1, bg2 (hex), angle (gradient degrees), textColor, layout: "text-top" | "text-bottom", titleBox?, subtitleBox? ({ x, y: offset from the layout spot as a fraction of slide width/height, scale: 1 = default size, rotation?: degrees clockwise }), layers? (what's on the slide, back to front: "title", "subtitle", "device" and item ids; leaving one out deletes it), items? (added objects: { id?, kind: "text" | "rect" | "ellipse" | "image" | "device", x, y: centre as fractions of slide width/height, w, h: fractions of slide width, size?: text font size as a fraction of slide width, text?, rotation?: degrees clockwise (not devices), color?, image?, device? (a device pose like the slide's; its size is a fraction of slide width), outerImage? }; to show one it must also be in layers by id; translations[lang].items maps item ids to translated text), device, image?, outerImage? }.
 device: { model, finish, size (device width / slide width, ~0.3-1.2), yaw, pitch, roll (degrees), fold (degrees; 180 flat, 0 closed; foldables and Mac lid), x, y (offset as fraction of slide width/height) }. Omitted fields keep their value for an existing slide id, or get defaults.
 Slide title/subtitle are the primary language's text; translations: { "<code>": { title, subtitle } } holds the other languages'. Everything except text is shared by all languages.
-image / outerImage: true keeps the current screenshot, false removes it, a string is an absolute path to a PNG or JPEG to load. Slide order is array order; omit a slide to delete it, omit id to add one.`,
+image / outerImage: true keeps the current screenshot, false removes it, a string is an absolute path or an http(s) URL of a PNG, JPEG, WebP or SVG to load. Slide order is array order; omit a slide to delete it, omit id to add one.`,
     inputSchema: {
       type: 'object',
       properties: { name: { type: 'string' }, languages: { type: 'array', items: { type: 'string' } }, targets: { type: 'array', items: { type: 'object' } } },
@@ -167,6 +188,73 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
       if (!s) throw new Error(`No slide ${a.index}; there are ${t.slides.length}`)
       const [w, h] = SIZES[t.size]
       return [{ type: 'image', data: await base64(await renderSlide(localize(s, a.language as string), SIZES[t.size], Math.min(1, 1000 / Math.max(w, h)))), mimeType: 'image/png' }]
+    },
+  },
+  {
+    name: 'move_slide',
+    description: 'Move a slide to another position on one platform. Indexes are 0-based.',
+    inputSchema: { type: 'object', properties: { platform: platformArg, from: { type: 'integer' }, to: { type: 'integer' } }, required: ['from', 'to'] },
+    run: async (host, a) => {
+      const p = current(host)
+      const t = targetOf(p, a.platform as string)
+      const [from, to] = [a.from as number, a.to as number]
+      if (!t.slides[from] || to < 0 || to >= t.slides.length) throw new Error(`Indexes must be 0 to ${t.slides.length - 1}`)
+      const slides = [...t.slides]
+      slides.splice(to, 0, ...slides.splice(from, 1))
+      const next = { ...p, targets: p.targets.map((x) => (x === t ? { ...t, slides } : x)) }
+      host.setProject(next)
+      return text(slides.map((s, i) => `${i}: ${s.title}`).join('\n'))
+    },
+  },
+  {
+    name: 'delete_slide',
+    description: 'Delete a slide from one platform by its 0-based index. A platform keeps at least one slide.',
+    inputSchema: { type: 'object', properties: { platform: platformArg, index: { type: 'integer' } }, required: ['index'] },
+    run: async (host, a) => {
+      const p = current(host)
+      const t = targetOf(p, a.platform as string)
+      if (!t.slides[a.index as number]) throw new Error(`No slide ${a.index}; there are ${t.slides.length}`)
+      if (t.slides.length === 1) throw new Error('This is the only slide; a platform needs at least one.')
+      const slides = t.slides.filter((_, i) => i !== a.index)
+      host.setProject({ ...p, targets: p.targets.map((x) => (x === t ? { ...t, slides } : x)) })
+      return text(slides.map((s, i) => `${i}: ${s.title}`).join('\n'))
+    },
+  },
+  {
+    name: 'save_theme',
+    description: 'Save a colour theme of your own; it shows in the app\'s Themes dialog and can be applied with apply_theme. Saving under an existing name of your own replaces it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        bg1: { type: 'string', description: 'Gradient start, hex' },
+        bg2: { type: 'string', description: 'Gradient end, hex' },
+        angle: { type: 'number', description: 'Gradient direction in degrees; 180 is top to bottom' },
+        textColor: { type: 'string', description: 'Hex' },
+        layout: { type: 'string', enum: ['text-top', 'text-bottom'] },
+        apply: { type: 'boolean', description: 'Also apply it to every slide of the open project. Default false.' },
+      },
+      required: ['name', 'bg1', 'bg2', 'textColor'],
+    },
+    run: async (host, a) => {
+      const hex = /^#[0-9a-f]{6}$/i
+      for (const k of ['bg1', 'bg2', 'textColor']) if (!hex.test(a[k] as string)) throw new Error(`${k} must be a hex colour like #1e3a8a`)
+      const t = { name: String(a.name).trim(), bg1: a.bg1 as string, bg2: a.bg2 as string, angle: (a.angle as number) ?? 180, textColor: a.textColor as string, layout: (a.layout ?? 'text-top') as Style['layout'] }
+      if (!t.name) throw new Error('name is empty')
+      await saveTheme(t)
+      if (a.apply) applyTheme(host, t)
+      return text(`Saved ${t.name}${a.apply ? ' and applied it' : ''}.`)
+    },
+  },
+  {
+    name: 'apply_theme',
+    description: 'Apply a theme (built-in or saved, by name from get_state) to every slide of the open project, or of one platform. Changes only colours and text position.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string' }, platform: { ...platformArg, description: 'Omit for all platforms.' } }, required: ['name'] },
+    run: async (host, a) => {
+      const t = (await loadThemes()).find((t) => t.name.toLowerCase() === String(a.name).toLowerCase())
+      if (!t) throw new Error(`No theme ${a.name}. There are: ${(await loadThemes()).map((t) => t.name).join(', ')}`)
+      applyTheme(host, t, a.platform as string | undefined)
+      return text(`Applied ${t.name}.`)
     },
   },
   {
@@ -208,7 +296,7 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
       const tpl = [...BUILT_IN, ...(await loadCustom())].find((t) => t.id === (a.template ?? 'blank')) ?? BLANK
       const platforms = ((a.platforms as Platform[] | undefined) ?? ALL_PLATFORMS).filter((p) => tpl.targets[p])
       if (!platforms.length) throw new Error(`Template ${tpl.id} supports only ${Object.keys(tpl.targets).join(', ')}`)
-      const p: Project = { id: crypto.randomUUID(), name: a.name as string, updated: Date.now(), targets: platforms.map((pl) => toTarget(tpl.targets[pl]!)) }
+      const p: Project = { id: crypto.randomUUID(), name: a.name as string, updated: Date.now(), targets: await Promise.all(platforms.map((pl) => toTarget(tpl.targets[pl]!))) }
       host.setProject(p)
       return text(describe(p))
     },
@@ -232,6 +320,17 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
     },
   },
   {
+    // Claude Code calls this itself (--permission-prompt-tool) before a tool that needs permission.
+    name: 'approve',
+    description: 'Internal: the app uses this to ask the user for permission. Never call it yourself.',
+    inputSchema: { type: 'object', properties: { tool_name: { type: 'string' }, input: { type: 'object' }, tool_use_id: { type: 'string' } }, required: ['tool_name', 'input'] },
+    run: async (_host, a) => {
+      const input = (a.input as Json) ?? {}
+      const ok = askUser ? await new Promise<boolean>((resolve) => askUser!({ tool: a.tool_name as string, input, resolve })) : false
+      return text(ok ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: 'The user declined this.' })
+    },
+  },
+  {
     name: 'delete_project',
     description: 'Delete a saved project for good. Ask the user first.',
     inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
@@ -243,7 +342,7 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
   },
 ]
 
-const INSTRUCTIONS = 'Screenshot Studio makes App Store screenshots: projects hold per-platform (iphone, ipad, mac) sets of slides, each a gradient background, headline, subtitle and a screenshot in a 3D device frame. Call get_state first, change things with update_project, and check results with render_slide.'
+const INSTRUCTIONS = 'Screenshot Studio makes App Store screenshots: projects hold per-platform (iphone, duo, ipad, mac) sets of slides, each a gradient background, headline, subtitle and a screenshot in a 3D device frame. Call get_state first, change things with update_project, and check results with render_slide. Projects can have several languages: to translate, add codes to languages and write each slide\'s translations[code] (title, subtitle, items), then check with render_slide\'s language.'
 
 async function answer(host: Host, req: { id: unknown; method: string; params?: Json }) {
   const ok = (result: unknown) => ({ jsonrpc: '2.0', id: req.id, result })

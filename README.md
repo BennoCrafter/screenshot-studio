@@ -9,12 +9,13 @@ It runs in the browser or as a desktop app built with [Tauri](https://tauri.app)
 - **One project, several platforms**: iPhone, iPad and Mac sets side by side. A new platform starts from an existing one's slides.
 - **App Store sizes**: iPhone 6.9", 6.3", 6.5"; iPad 13", 11"; Mac 2880×1800 down to 1280×800.
 - **3D device frames** with pose, size and finish controls, including foldables with an outer display.
-- **Templates**: built-in designs, plus your own saved from any project.
+- **Templates**: built-in designs, plus your own saved from any project (Export → Template), with or without its screenshots. Tick **Share with everyone** and the app opens a pull request adding it to `templates/` in this repo, using your GitHub CLI login.
 - **Languages**: add App Store localizations (German, English, Japanese and so on) to a project. Each language has its own headline and subtitle. Everything else (screenshots, devices, colours, layout) is shared, so a change shows up in every language.
-- **Export** every slide in every language as PNG. The desktop app writes them all to a folder you pick.
+- **Export** PNGs of the slides and languages you pick. The desktop app writes them all to a folder you pick.
 - **Project files** (`.ssproj`): one JSON file with the screenshots inside, for backup or sharing.
 - **Autosave**: projects are saved as you edit.
-- **Claude built in** (desktop): a chat panel that runs your installed Claude Code. Claude can see and change everything in the open project while you watch.
+- **Claude built in** (desktop): a chat panel that runs your installed Claude Code. Claude can see and change everything in the open project while you watch. It can also search the web for images (icons, logos, photos) and download them onto slides. Click any tool call in the chat to see what it sent and what came back.
+- **Images and SVGs**: PNG, JPEG, WebP and SVG work as screenshots and as images on slides. SVGs stay sharp at any export size.
 
 ## Claude and MCP
 

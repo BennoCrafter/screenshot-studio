@@ -21,6 +21,7 @@ export interface Slide {
   outerImage: HTMLImageElement | null // foldables' outer display
   device: DevicePose
   translations?: Record<string, Translation> // other languages' text; everything else is shared
+  primary?: Pick<Slide, 'title' | 'subtitle'> // set by localize: the text the device is laid out by, so languages never move it
 }
 
 export interface Translation { title: string; subtitle: string; items?: Record<string, string> }
@@ -41,12 +42,13 @@ export interface Item {
   size?: number // text: font size
   text?: string
   color?: string // text (the slide's text colour if unset) and shapes
+  rotation?: number // degrees clockwise (not devices: they spin with their pose)
   image?: HTMLImageElement | null // images, and devices' screenshots
   outerImage?: HTMLImageElement | null // devices: a foldable's outer display
   device?: DevicePose // devices: placed by x, y; its size is a fraction of slide width
 }
-/** A text's offset from where the layout puts it (fractions of slide width/height) and its size, 1 being the layout's. */
-export interface TextBox { x: number; y: number; scale: number }
+/** A text's offset from where the layout puts it (fractions of slide width/height), its size, 1 being the layout's, and its turn in degrees clockwise. */
+export interface TextBox { x: number; y: number; scale: number; rotation?: number }
 export const NO_BOX: TextBox = { x: 0, y: 0, scale: 1 }
 export const layersOf = (s: Pick<Slide, 'layers'>): Part[] => s.layers ?? BUILT_IN_PARTS
 
@@ -55,6 +57,7 @@ export function localize(s: Slide, lang?: string): Slide {
   const t = lang ? s.translations?.[lang] : undefined
   return t ? {
     ...s,
+    primary: { title: s.title, subtitle: s.subtitle },
     title: t.title || s.title,
     subtitle: t.subtitle || s.subtitle,
     items: s.items?.map((i) => (t.items?.[i.id] ? { ...i, text: t.items[i.id] } : i)),
@@ -87,11 +90,12 @@ export const SIZES = {
 
 export type SizeName = keyof typeof SIZES
 
-export type Platform = 'iphone' | 'ipad' | 'mac'
+export type Platform = 'iphone' | 'duo' | 'ipad' | 'mac'
 
 /** Per platform: its store sizes (first is the default) and the device a new slide starts with. */
 export const PLATFORMS: Record<Platform, { label: string; sizes: SizeName[]; device: Partial<DevicePose> }> = {
-  iphone: { label: 'iPhone', sizes: ['iPhone 6.9"', 'iPhone 6.3"', 'iPhone 6.5"', 'iPhone Duo inner', 'iPhone Duo outer'], device: { model: 'iphone-18-pro-max', finish: 'glacier', size: 0.74 } },
+  iphone: { label: 'iPhone', sizes: ['iPhone 6.9"', 'iPhone 6.3"', 'iPhone 6.5"'], device: { model: 'iphone-18-pro-max', finish: 'glacier', size: 0.74 } },
+  duo: { label: 'iPhone Duo', sizes: ['iPhone Duo inner', 'iPhone Duo outer'], device: { model: 'iphone-duo', finish: 'night-sky', size: 0.9 } },
   ipad: { label: 'iPad', sizes: ['iPad 13"', 'iPad 11"'], device: { model: 'ipad-pro-13', finish: 'space-black', size: 0.8 } },
   mac: { label: 'Mac', sizes: ['Mac 2880×1800', 'Mac 2560×1600', 'Mac 1440×900', 'Mac 1280×800'], device: { model: 'macbook-pro-14', finish: 'space-black', size: 0.46, pitch: 14, fold: 110 } },
 }
@@ -135,6 +139,7 @@ export interface Anchor {
   y: number
   w: number
   h: number
+  rotation?: number // degrees clockwise about its centre
   text?: { cx: number; wrap: number; size: number; weight: number; alpha: number; color: string; lines: string[] }
   dev?: { cx: number; cy: number; radius: number } // devices: centre and flat half-height, for the turn grips
 }
@@ -169,7 +174,7 @@ export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h:
   const baseY = s.layout === 'text-top' ? pad : h - pad - baseH
   const lay = (p: TextPart, restY: number) => {
     const b = s[`${p}Box`] ?? NO_BOX
-    return setText(s[p], w / 2 + b.x * w, restY + b.y * h, w * 0.84 * b.scale, base[p] * b.scale, TEXT_STYLE[p], s.textColor)
+    return { ...setText(s[p], w / 2 + b.x * w, restY + b.y * h, w * 0.84 * b.scale, base[p] * b.scale, TEXT_STYLE[p], s.textColor), rotation: b.rotation }
   }
   const anchors: Record<Part, Anchor> = { title: lay('title', baseY), subtitle: lay('subtitle', baseY + titleH + gap) }
 
@@ -178,22 +183,25 @@ export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h:
   // Phones keep their resting height so turning never shifts them; a laptop's shape depends
   // so much on its lid that it's laid out by what's actually drawn.
   const tall = dev.laptop ? dev.height : dev.flatHeight
-  const top = s.layout === 'text-top' ? baseY + baseH + pad * 0.8 : baseY - pad * 0.8 - tall
+  // placed by the primary language's text, so a translation that wraps differently leaves it put
+  const p0 = s.primary ?? s
+  const restH = textHeight(ctx, p0.title, w, base.title, 800) + gap + textHeight(ctx, p0.subtitle, w, base.subtitle, 500)
+  const top = s.layout === 'text-top' ? pad + restH + pad * 0.8 : h - pad - restH - pad * 0.8 - tall
   const cx = w / 2 + s.device.x * w
   const cy = top + tall / 2 + s.device.y * h
   anchors.device = { x: cx - dev.width / 2, y: cy - dev.height / 2, w: dev.width, h: dev.height, dev: { cx, cy, radius: dev.flatHeight / 2 } }
-  const drawn: Record<Part, HTMLCanvasElement> = { device: dev.canvas }
+  const drawn: Record<Part, HTMLCanvasElement> = { device: own(dev.canvas) }
 
   for (const i of s.items ?? []) {
     if (i.kind === 'text') {
       const t = setText(i.text ?? '', i.x * w, 0, i.w * w, (i.size ?? 0.05) * w, TEXT_STYLE.item, i.color ?? s.textColor)
-      anchors[i.id] = { ...t, y: i.y * h - t.h / 2 } // centred on its spot, growing both ways
+      anchors[i.id] = { ...t, y: i.y * h - t.h / 2, rotation: i.rotation } // centred on its spot, growing both ways
     } else if (i.kind === 'device' && i.device) {
       const d = renderDevice(i.device, i.image ?? null, i.outerImage ?? null, w * i.device.size)
       const icx = i.x * w, icy = i.y * h
-      drawn[i.id] = d.canvas
+      drawn[i.id] = own(d.canvas)
       anchors[i.id] = { x: icx - d.width / 2, y: icy - d.height / 2, w: d.width, h: d.height, dev: { cx: icx, cy: icy, radius: d.flatHeight / 2 } }
-    } else anchors[i.id] = { x: (i.x - i.w / 2) * w, y: i.y * h - (i.h * w) / 2, w: i.w * w, h: i.h * w }
+    } else anchors[i.id] = { x: (i.x - i.w / 2) * w, y: i.y * h - (i.h * w) / 2, w: i.w * w, h: i.h * w, rotation: i.rotation }
   }
 
   for (const p of layersOf(s)) {
@@ -201,6 +209,12 @@ export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h:
     if (p === hide || !at) continue
     const item = s.items?.find((i) => i.id === p)
     ctx.save()
+    if (at.rotation) {
+      const cx = at.x + at.w / 2, cy = at.y + at.h / 2
+      ctx.translate(cx, cy)
+      ctx.rotate((at.rotation * Math.PI) / 180)
+      ctx.translate(-cx, -cy)
+    }
     if (drawn[p]) {
       ctx.shadowColor = 'rgba(0,0,0,0.35)'
       ctx.shadowBlur = w * 0.05
@@ -226,6 +240,15 @@ export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h:
     ctx.restore()
   }
   return anchors
+}
+
+/** A copy of renderDevice's shared canvas, so the next device rendered doesn't paint over it. */
+function own(c: HTMLCanvasElement) {
+  const k = document.createElement('canvas')
+  k.width = c.width
+  k.height = c.height
+  k.getContext('2d')!.drawImage(c, 0, 0)
+  return k
 }
 
 /** A slide drawn at full size off screen, as a PNG; `scale` shrinks it. */

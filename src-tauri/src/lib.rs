@@ -91,7 +91,8 @@ fn handle(app: &AppHandle, mut stream: TcpStream) {
     let (tx, rx) = channel();
     PENDING.lock().unwrap().get_or_insert_with(HashMap::new).insert(id, tx);
     let _ = app.emit("mcp-request", McpRequest { id, body });
-    match rx.recv_timeout(Duration::from_secs(300)) {
+    // long, since an approval waits for the user
+    match rx.recv_timeout(Duration::from_secs(1800)) {
         Ok(answer) => reply(&mut stream, "200 OK", &answer),
         Err(_) => {
             PENDING.lock().unwrap().as_mut().map(|p| p.remove(&id));
@@ -117,23 +118,39 @@ fn serve_mcp(app: AppHandle) {
 
 static CHAT: Mutex<Option<Child>> = Mutex::new(None);
 
+/// A command-line tool the user installed (`claude`, `gh`), started from the home folder. On macOS and
+/// Linux it goes through a login shell, so the PATH from their shell config finds it.
+#[cfg(unix)]
+fn cli(program: &'static str) -> Command {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+    let mut c = Command::new(shell);
+    c.arg("-lic").arg(format!("exec {program} \"$@\"")).arg(program);
+    c.current_dir(std::env::var("HOME").unwrap_or_else(|_| "/".into()));
+    c
+}
+#[cfg(windows)]
+fn cli(program: &'static str) -> Command {
+    use std::os::windows::process::CommandExt;
+    let mut c = Command::new(program);
+    c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashing up
+    if let Ok(home) = std::env::var("USERPROFILE") {
+        c.current_dir(home);
+    }
+    c
+}
+const NOT_INSTALLED: &str = "Claude Code wasn't found. Install it from https://claude.com/claude-code";
+
 /// Runs `claude -p` and streams its stream-json lines as `claude-line` events; resolves when it exits.
 #[tauri::command]
 async fn claude_chat(app: AppHandle, args: Vec<String>) -> Result<(), String> {
     claude_stop();
-    // a login shell, so the PATH from the user's shell config finds `claude`
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    let mut child = Command::new(shell)
-        .arg("-lic")
-        .arg("exec claude \"$@\"")
-        .arg("claude")
+    let mut child = cli("claude")
         .args(args)
-        .current_dir(std::env::var("HOME").unwrap_or_else(|_| "/".into()))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| if e.kind() == std::io::ErrorKind::NotFound { NOT_INSTALLED.into() } else { e.to_string() })?;
     let stdout = child.stdout.take().unwrap();
     let mut stderr = child.stderr.take().unwrap();
     *CHAT.lock().unwrap() = Some(child);
@@ -155,10 +172,58 @@ async fn claude_chat(app: AppHandle, args: Vec<String>) -> Result<(), String> {
     let errors = errors.join().unwrap_or_default();
     match status {
         Some(s) if !s.success() => Err(match s.code() {
-            Some(127) => "Claude Code wasn't found. Install it from https://claude.com/claude-code".into(),
+            Some(127) => NOT_INSTALLED.into(),
             _ => errors.lines().filter(|l| !l.contains("job control")).collect::<Vec<_>>().join("\n"),
         }),
         _ => Ok(()),
+    }
+}
+
+/// Whether the terminal Claude Code has this app's MCP server added (user scope, so any directory).
+#[tauri::command]
+async fn claude_mcp_added() -> bool {
+    cli("claude")
+        .args(["mcp", "get", "screenshot-studio"])
+        .stdin(Stdio::null())
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+/// Opens a web link in the default browser; only https links, so the page can't launch anything else.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err("only https links".into());
+    }
+    #[cfg(target_os = "macos")]
+    let opener = "open";
+    #[cfg(windows)]
+    let opener = "explorer";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let opener = "xdg-open";
+    Command::new(opener).arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+const NO_GH: &str = "The GitHub CLI isn't installed. Get it from https://cli.github.com and run `gh auth login`.";
+
+/// Runs the GitHub CLI with `input` on stdin; its output, or why it failed.
+#[tauri::command]
+async fn gh(args: Vec<String>, input: Option<String>) -> Result<String, String> {
+    use std::io::Write;
+    let mut child = cli("gh")
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| if e.kind() == std::io::ErrorKind::NotFound { NO_GH.into() } else { e.to_string() })?;
+    let mut stdin = child.stdin.take().unwrap();
+    std::thread::spawn(move || stdin.write_all(input.unwrap_or_default().as_bytes()));
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    match out.status.code() {
+        Some(0) => Ok(String::from_utf8_lossy(&out.stdout).trim().into()),
+        Some(127) => Err(NO_GH.into()),
+        _ => Err(String::from_utf8_lossy(&out.stderr).lines().filter(|l| !l.contains("job control")).collect::<Vec<_>>().join("\n")),
     }
 }
 
@@ -173,8 +238,11 @@ fn claude_stop() {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![mcp_respond, claude_chat, claude_stop])
+        .invoke_handler(tauri::generate_handler![mcp_respond, claude_chat, claude_stop, claude_mcp_added, open_url, gh])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

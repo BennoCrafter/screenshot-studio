@@ -27,7 +27,8 @@ function download(name: string, blob: Blob) {
 
 const bytes = async (blob: Blob) => new Uint8Array(await blob.arrayBuffer())
 
-/** Several files at once: the desktop app asks for a folder, the browser downloads each. Returns false if cancelled. */
+/** Several files at once: the desktop app asks for a folder (names may hold subfolders, `de/iPhone/x.png`), the browser
+ *  downloads each. Returns false if cancelled. */
 export async function saveFiles(files: { name: string; blob: Blob }[]) {
   if (!isDesktop) {
     files.forEach((f) => download(f.name, f.blob))
@@ -36,9 +37,13 @@ export async function saveFiles(files: { name: string; blob: Blob }[]) {
   const { open } = await import('@tauri-apps/plugin-dialog')
   const dir = await open({ directory: true, title: 'Export screenshots to…' })
   if (!dir) return false
-  const { writeFile } = await import('@tauri-apps/plugin-fs')
-  const { join } = await import('@tauri-apps/api/path')
-  for (const f of files) await writeFile(await join(dir, f.name), await bytes(f.blob))
+  const { mkdir, writeFile } = await import('@tauri-apps/plugin-fs')
+  const { dirname, join } = await import('@tauri-apps/api/path')
+  for (const f of files) {
+    const path = await join(dir, ...f.name.split('/'))
+    if (f.name.includes('/')) await mkdir(await dirname(path), { recursive: true })
+    await writeFile(path, await bytes(f.blob))
+  }
   return true
 }
 

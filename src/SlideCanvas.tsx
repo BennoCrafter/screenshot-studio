@@ -12,15 +12,28 @@ const snap = (v: number, on: boolean) => (on ? Math.round(v / 15) * 15 : Math.ro
 const FRONT: Partial<DevicePose> = { yaw: 0, pitch: 0, roll: 0 }
 const DEGREES_PER_RADIUS = 75 // a drag across the device's radius turns it this far (as in open-screenshot-generator)
 const CORNERS = ['nw', 'ne', 'se', 'sw']
+const SNAP_PX = 6 // screen px within which a moved element clicks onto a guide
 
-type Grip = 'move' | 'turn' | 'fold' | 'scale' | 'spin' | 'resize'
+/** The offset that brings one of `edges` (moved by `m`) onto the nearest of `lines` within `tol`, and that line. */
+function snapTo(edges: number[], lines: number[], m: number, tol: number) {
+  let best: { by: number; at: number } | null = null
+  for (const e of edges) for (const l of lines) {
+    const by = l - (e + m)
+    if (Math.abs(by) <= tol && (!best || Math.abs(by) < Math.abs(best.by))) best = { by, at: l }
+  }
+  return best
+}
+
+type Grip = 'move' | 'turn' | 'fold' | 'scale' | 'spin' | 'resize' | 'rotate'
 type Rect = { x: number; y: number; w: number; h: number }
 
 // Same model as open-screenshot-generator: dragging the device moves it, the round grip
 // in its middle turns it like a turntable, a foldable's second grip folds it. Shift snaps to 15°.
 // Every other element (headline, subtitle, added objects): drag to move, corners to resize, double-click
-// a text to type right on the slide. Each element gets a hit area stacked in layer order, so the frontmost wins.
-export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, onMenu, onEdit, onEditText, onShot }: {
+// a text to type right on the slide; all but devices get a knob on top to rotate them. Moving snaps
+// to the slide's middle and edges and to other elements' middles and edges, like Canva; Alt moves freely.
+// Dropping onto another slide moves the elements there. Each element gets a hit area stacked in layer order, so the frontmost wins.
+export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, onMenu, onEdit, onEditText, onRotate, onTransfer, onShot }: {
   slide: Slide
   size: readonly [number, number]
   selected: Part[] // this slide's selected elements
@@ -32,13 +45,29 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
   onMenu: (part: Part, x: number, y: number) => void
   onEdit: (part: Part | null) => void
   onEditText: (part: Part, text: string) => void
+  /** Turns a text, image or shape to `deg` degrees clockwise. */
+  onRotate: (part: Part, deg: number) => void
+  /** Moves what's picked here onto slide `to`, which sits (dx, dy) slide sizes away. */
+  onTransfer: (to: string, dx: number, dy: number) => void
   /** Changes a device element: its pose or screenshots. */
   onShot: (part: Part, patch: Partial<Shot>) => void
 }) {
   const ref = useRef<HTMLCanvasElement>(null)
-  const drag = useRef<{ grip: Grip; x: number; y: number; start: DevicePose; mover?: (dx: number, dy: number) => void; resizer?: (ratio: number) => void; part?: Part } | null>(null)
+  const drag = useRef<{ grip: Grip; x: number; y: number; start: DevicePose; mover?: (dx: number, dy: number) => void; resizer?: (ratio: number) => void; part?: Part; deg?: number; snap?: { box: Rect; x: number[]; y: number[] }; parts?: Part[]
+    ghost?: { el: HTMLCanvasElement; x: number; y: number } } | null>(null)
   const [anchor, setAnchor] = useState<{ anchors: Record<Part, Anchor>; px: number }>()
   const [live, setLive] = useState<Grip | null>(null)
+  const [guides, setGuides] = useState<{ x?: number; y?: number }>({})
+  const dropOn = useRef<HTMLCanvasElement | null>(null) // another slide being dragged over, highlighted
+  /** The other slide under the pointer, if any. */
+  const otherSlide = (e: React.PointerEvent) => document.elementsFromPoint(e.clientX, e.clientY)
+    .find((el): el is HTMLCanvasElement => el instanceof HTMLCanvasElement && !!el.dataset.slide && el !== ref.current) ?? null
+  const highlight = (el: HTMLCanvasElement | null) => {
+    if (dropOn.current === el) return
+    dropOn.current?.classList.remove('drop-target')
+    el?.classList.add('drop-target')
+    dropOn.current = el
+  }
   useEffect(() => {
     const anchors = drawSlide(ref.current!.getContext('2d')!, slide, size[0], size[1], editing ?? undefined)
     setAnchor({ anchors, px: ref.current!.clientWidth / size[0] }) // css px per slide px, for the text editor's font
@@ -62,13 +91,28 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
     e.preventDefault() // no text/image selection while dragging
     e.stopPropagation()
     const mover = onPress(part, e.shiftKey)
-    if (mover) begin(e, { grip: 'move', x: e.clientX, y: e.clientY, start: pose, mover })
+    if (!mover) return
+    // what's being dragged on this slide, and the lines it can click onto
+    const parts = selected.includes(part) ? selected : e.shiftKey ? [...selected, part] : [part]
+    const at = parts.map((p) => anchor?.anchors[p]).filter((a) => !!a)
+    const box = at.length ? {
+      x: Math.min(...at.map((a) => a.x)), y: Math.min(...at.map((a) => a.y)),
+      w: Math.max(...at.map((a) => a.x + a.w)) - Math.min(...at.map((a) => a.x)),
+      h: Math.max(...at.map((a) => a.y + a.h)) - Math.min(...at.map((a) => a.y)),
+    } : null
+    const others = layersOf(slide).filter((p) => !parts.includes(p)).map((p) => anchor?.anchors[p]).filter((a) => !!a)
+    const snap = box ? {
+      box,
+      x: [0, size[0] / 2, size[0], ...others.flatMap((o) => [o.x, o.x + o.w / 2, o.x + o.w])],
+      y: [0, size[1] / 2, size[1], ...others.flatMap((o) => [o.y, o.y + o.h / 2, o.y + o.h])],
+    } : undefined
+    begin(e, { grip: 'move', x: e.clientX, y: e.clientY, start: pose, mover, snap, parts })
   }
   const start = (grip: Grip, part?: Part) => (e: React.PointerEvent) => {
     if (e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
-    begin(e, { grip, x: e.clientX, y: e.clientY, start: pose, part, resizer: part === undefined ? undefined : onGrab(part) })
+    begin(e, { grip, x: e.clientX, y: e.clientY, start: pose, part, deg: part ? anchor?.anchors[part]?.rotation : undefined, resizer: part === undefined || grip === 'rotate' ? undefined : onGrab(part) })
   }
   const menu = (part: Part) => (e: React.MouseEvent) => {
     e.preventDefault()
@@ -88,16 +132,32 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
       const c = { x: r.left + (cx / size[0]) * r.width, y: r.top + (cy / size[1]) * r.height }
       return Math.hypot(e.clientX - c.x, e.clientY - c.y) / Math.max(1, Math.hypot(d.x - c.x, d.y - c.y))
     }
-    if (d.grip === 'move') d.mover!(dx / r.width, dy / r.height)
+    // degrees the pointer has swept clockwise around an element's centre
+    const swept = (cx: number, cy: number) => {
+      const o = { x: r.left + (cx / size[0]) * r.width, y: r.top + (cy / size[1]) * r.height }
+      return (Math.atan2(e.clientY - o.y, e.clientX - o.x) - Math.atan2(d.y - o.y, d.x - o.x)) * (180 / Math.PI)
+    }
+    if (d.grip === 'move') {
+      let mx = (dx / r.width) * size[0], my = (dy / r.height) * size[1] // slide px
+      const g = d.snap
+      const sx = g && !e.altKey ? snapTo([g.box.x, g.box.x + g.box.w / 2, g.box.x + g.box.w], g.x, mx, (SNAP_PX * size[0]) / r.width) : null
+      const sy = g && !e.altKey ? snapTo([g.box.y, g.box.y + g.box.h / 2, g.box.y + g.box.h], g.y, my, (SNAP_PX * size[1]) / r.height) : null
+      mx += sx?.by ?? 0
+      my += sy?.by ?? 0
+      setGuides({ x: sx?.at, y: sy?.at })
+      d.mover!(mx / size[0], my / size[1])
+      highlight(otherSlide(e))
+      ghost(d, e, r)
+    }
     else if (d.grip === 'resize') {
       const t = anchor.anchors[d.part!]
       if (t) d.resizer!(ratio(t.x + t.w / 2, t.y + t.h / 2))
     }
     else if (d.grip === 'scale') onDevice({ size: clamp(Math.round(d.start.size * ratio(c.cx, c.cy) * 100) / 100, 0.1, 2) })
-    else if (d.grip === 'spin') {
-      const o = { x: r.left + (c.cx / size[0]) * r.width, y: r.top + (c.cy / size[1]) * r.height }
-      const turned = (Math.atan2(e.clientY - o.y, e.clientX - o.x) - Math.atan2(d.y - o.y, d.x - o.x)) * (180 / Math.PI)
-      onDevice({ roll: wrap180(snap((d.start.roll ?? 0) - turned, e.shiftKey)) })
+    else if (d.grip === 'spin') onDevice({ roll: wrap180(snap((d.start.roll ?? 0) - swept(c.cx, c.cy), e.shiftKey)) })
+    else if (d.grip === 'rotate') {
+      const t = anchor.anchors[d.part!]
+      if (t) onRotate(d.part!, wrap180(snap((d.deg ?? 0) + swept(t.x + t.w / 2, t.y + t.h / 2), e.shiftKey)))
     }
     else if (d.grip === 'turn') onDevice({
       yaw: wrap180(snap(d.start.yaw + dx * k, e.shiftKey)),
@@ -106,9 +166,48 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
     // a foldable folds toward its hinge sideways; a laptop's lid follows the pointer up and down
     else onDevice({ fold: clamp(snap(d.start.fold - (model?.laptop ? -dy : dx) * k, e.shiftKey), 0, 180) })
   }
-  const end = () => {
+  // Off its own slide an element would be clipped away, so a copy of it follows the pointer instead.
+  const ghost = (d: NonNullable<typeof drag.current>, e: React.PointerEvent, r: DOMRect) => {
+    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
+    if (inside || !anchor || !d.parts) {
+      if (d.ghost) d.ghost.el.style.display = 'none'
+      return
+    }
+    const k = r.width / size[0] // screen px per slide px
+    if (!d.ghost) {
+      const at = d.parts.map((p) => anchor.anchors[p]).filter((a) => !!a)
+      if (!at.length) return
+      const x0 = Math.min(...at.map((a) => a.x)), y0 = Math.min(...at.map((a) => a.y))
+      const x1 = Math.max(...at.map((a) => a.x + a.w)), y1 = Math.max(...at.map((a) => a.y + a.h))
+      const pad = Math.max(x1 - x0, y1 - y0) * 0.3 // room for rotation and shadows
+      const full = document.createElement('canvas')
+      full.width = size[0]
+      full.height = size[1]
+      drawSlide(full.getContext('2d')!, { ...slide, bg1: 'transparent', bg2: 'transparent', layers: layersOf(slide).filter((p) => d.parts!.includes(p)) }, size[0], size[1])
+      const el = document.createElement('canvas')
+      el.width = Math.ceil(x1 - x0 + pad * 2)
+      el.height = Math.ceil(y1 - y0 + pad * 2)
+      el.getContext('2d')!.drawImage(full, pad - x0, pad - y0)
+      el.className = 'drag-ghost'
+      el.style.width = `${el.width * k}px`
+      el.style.height = `${el.height * k}px`
+      document.body.append(el)
+      // where its top-left sits on screen, and the pointer then
+      d.ghost = { el, x: r.left + (x0 - pad) * k - e.clientX, y: r.top + (y0 - pad) * k - e.clientY }
+    }
+    Object.assign(d.ghost.el.style, { display: '', left: `${e.clientX + d.ghost.x}px`, top: `${e.clientY + d.ghost.y}px` })
+  }
+  const end = (e: React.PointerEvent) => {
+    drag.current?.ghost?.el.remove()
+    const over = drag.current?.grip === 'move' && e.type === 'pointerup' ? otherSlide(e) : null
+    if (over) {
+      const a = ref.current!.getBoundingClientRect(), b = over.getBoundingClientRect()
+      onTransfer(over.dataset.slide!, (b.left - a.left) / a.width, (b.top - a.top) / a.height)
+    }
+    highlight(null)
     drag.current = null
     setLive(null)
+    setGuides({})
   }
   const pos = (dxPx = 0, dyPx = 0) => ({ left: `${((dev!.dev!.cx + dxPx) / size[0]) * 100}%`, top: `${((dev!.dev!.cy + dyPx) / size[1]) * 100}%` })
   const box = (b: Rect) => ({
@@ -138,6 +237,8 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
         onContextMenu={menu('device')}
         {...handlers}
       />
+      {guides.x !== undefined && <div className="guide v" style={{ left: `${(guides.x / size[0]) * 100}%` }} />}
+      {guides.y !== undefined && <div className="guide h" style={{ top: `${(guides.y / size[1]) * 100}%` }} />}
       {anchor && layersOf(slide).map((p) => {
         const at = anchor.anchors[p]
         if (!at) return null
@@ -149,7 +250,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
             key={p}
             data-part={p}
             className={selected.includes(p) && !(at.dev && solo === p) ? 'hit selected' : 'hit'}
-            style={box(at)}
+            style={{ ...box(at), rotate: at.rotation ? `${at.rotation}deg` : undefined }}
             onPointerDown={press(p)}
             onContextMenu={menu(p)}
             onDoubleClick={at.text ? () => onEdit(p) : undefined}
@@ -158,6 +259,15 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
             {solo === p && !at.dev && CORNERS.map((c) => (
               <span key={c} className={`corner ${c}`} title="Drag to resize" onPointerDown={start('resize', p)} {...handlers} />
             ))}
+            {solo === p && !at.dev && (
+              <span
+                className="spin"
+                title="Drag to rotate (Shift snaps to 15°). Double-click to straighten"
+                onPointerDown={start('rotate', p)}
+                {...handlers}
+                onDoubleClick={(e) => { e.stopPropagation(); onRotate(p, 0) }}
+              />
+            )}
           </div>
         )
       })}
@@ -203,7 +313,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
               </svg>
             </button>
           )}
-          {live && live !== 'move' && live !== 'resize' && (
+          {live && live !== 'move' && live !== 'resize' && live !== 'rotate' && (
             <div className="grip-label" style={pos()}>
               {{
                 turn: `Turn ${pose.yaw}°, tilt ${pose.pitch}°`,
@@ -253,6 +363,8 @@ function TextEditor({ at, scale, size, text, onChange, onDone }: {
         font: `${t.weight} ${t.size * scale}px/1.15 ${FONT}`,
         color: t.color,
         opacity: t.alpha,
+        rotate: at.rotation ? `${at.rotation}deg` : undefined,
+        transformOrigin: `50% ${(at.h / 2 + t.size * 0.075) * scale}px`, // the text's centre, as the canvas turns it
       }}
       onInput={(e) => onChange(e.currentTarget.innerText.replace(/\n$/, ''))}
       onBlur={onDone}

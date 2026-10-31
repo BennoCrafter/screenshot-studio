@@ -66,10 +66,28 @@ const summary = ({ id, name, updated, thumb, targets }: WithImages<unknown>): Pr
 const blobs = new WeakMap<HTMLImageElement, Blob>()
 const blobOf = (img: HTMLImageElement | null) => (img && blobs.get(img)) ?? null
 
-export async function loadImage(blob: Blob) {
+/** An image file's type from its name, and the extension to store a type under. */
+export const typeOfName = (name: string) => {
+  const e = name.split('.').pop()!.toLowerCase()
+  return `image/${{ jpg: 'jpeg', svg: 'svg+xml' }[e] ?? e}`
+}
+export const extOfType = (type: string) => {
+  const t = type.split('/')[1]
+  return ({ jpeg: 'jpg', 'svg+xml': 'svg' } as Record<string, string>)[t] ?? (t || 'png')
+}
+
+export async function loadImage(blob: Blob): Promise<HTMLImageElement> {
   const img = new Image()
   img.src = URL.createObjectURL(blob)
   await img.decode()
+  // an SVG without width/height has no size of its own: give it its viewBox's
+  if (!img.naturalWidth && blob.type === 'image/svg+xml') {
+    const text = await blob.text()
+    if (!/<svg[^>]*\swidth=/.test(text)) {
+      const [, w = '300', h = '150'] = text.match(/viewBox=["'][^"']*?([\d.]+)[\s,]+([\d.]+)\s*["']/) ?? []
+      return loadImage(new Blob([text.replace('<svg', `<svg width="${w}" height="${h}"`)], { type: blob.type }))
+    }
+  }
   blobs.set(img, blob)
   return img
 }
@@ -129,7 +147,7 @@ async function saveFiles(p: Project) {
     const blob = blobOf(img)
     if (!blob) return null
     let name = names.get(blob)
-    if (!name) names.set(blob, (name = `${crypto.randomUUID()}.${blob.type.split('/')[1] || 'png'}`))
+    if (!name) names.set(blob, (name = `${crypto.randomUUID()}.${extOfType(blob.type)}`))
     if (!(await exists(`${dir}/${name}`, opt))) await writeFile(`${dir}/${name}`, new Uint8Array(await blob.arrayBuffer()), opt)
     used.add(name)
     return name
@@ -155,7 +173,7 @@ const files = {
     const opt = await at()
     return mapImages(await readStored(id), async (name) => {
       if (!name) return null
-      const blob = new Blob([await readFile(`${dirOf(id)}/${name}`, opt)], { type: `image/${name.split('.').pop()}` })
+      const blob = new Blob([await readFile(`${dirOf(id)}/${name}`, opt)], { type: typeOfName(name) })
       names.set(blob, name)
       return loadImage(blob)
     })
@@ -196,13 +214,19 @@ export function thumbnail(canvas: HTMLCanvasElement | null) {
 
 export const PROJECT_FILE = { name: 'Screenshot Studio project', extensions: ['ssproj'] }
 
-const toDataUrl = (blob: Blob) =>
+export const toDataUrl = (blob: Blob) =>
   new Promise<string>((resolve, reject) => {
     const r = new FileReader()
     r.onload = () => resolve(r.result as string)
     r.onerror = () => reject(r.error)
     r.readAsDataURL(blob)
   })
+
+/** An image's file as a data URL. */
+export const imageUrl = async (img: HTMLImageElement) => {
+  const b = blobOf(img)
+  return b ? toDataUrl(b) : null
+}
 
 export async function projectToFile(p: Project): Promise<Blob> {
   const { thumb: _thumb, ...rest } = await mapImages(p, (img) => {

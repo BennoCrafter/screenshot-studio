@@ -1,26 +1,98 @@
 import { useEffect, useRef, useState } from 'react'
-import { MCP_URL } from './agent'
+import { APPROVE_TOOL, MCP_URL, onApproval, type Approval } from './agent'
+import { extOfType } from './project'
+import { claudeLinked, openSettings } from './Settings'
 
 // Chat with Claude Code, run as `claude -p` by the desktop app and connected to this app's
 // MCP server, so it can change the project while you watch.
 
-type Item = { role: 'user' | 'assistant' | 'tool' | 'error'; text: string }
+type Item = { role: 'user' | 'assistant' | 'tool' | 'error'; text: string; images?: string[]; id?: string; input?: string; result?: string; failed?: boolean }
+type Attachment = { blob: Blob; url: string }
 
-const SYSTEM = 'You are the assistant inside Screenshot Studio, a desktop app for App Store screenshots. Use the screenshot-studio tools to look at and change what the user sees: call get_state first, edit with update_project, and check your work with render_slide. Keep replies short.'
+const SYSTEM = 'You are the assistant inside Screenshot Studio, a desktop app for App Store screenshots. Use the screenshot-studio tools to look at and change what the user sees: call get_state first, edit with update_project, and check your work with render_slide. To translate, add language codes to the project\'s languages and fill each slide\'s translations; write natural, short store copy rather than word-for-word. Images the user attaches are listed as file paths: look at them with Read, and put them on slides by giving the path as a slide\'s image. You can also find images on the web (WebSearch, WebFetch) and give their URL instead of a path; the app downloads it. Keep replies short.'
 
-const ADD_COMMAND = `claude mcp add --transport http screenshot-studio ${MCP_URL}`
+// Claude Code's permission modes. Anything a mode doesn't allow on its own comes to the chat for Allow / Deny.
+const MODES = { manual: 'Ask every time', acceptEdits: 'Auto-accept edits', auto: 'Auto', bypassPermissions: 'Allow everything' }
+const MODELS = { '': 'Default model', fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku' }
+const EFFORTS = { '': 'Default effort', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' }
+
+/** What Claude can do here, in the user's words. */
+const CAN = [
+  ['Build slides', 'Write headlines, pick devices and lay out new slides'],
+  ['Restyle', 'Apply a theme, or design and save a new one'],
+  ['Translate', 'Add languages and write store copy for each'],
+  ['Rearrange', 'Reorder, duplicate or delete slides'],
+  ['Use your images', 'Put attached screenshots and SVGs into device frames or on slides'],
+  ['Find images on the web', 'Search for icons, logos and pictures, and download them onto slides'],
+  ['Check and export', 'Look at each slide as it exports, and write the PNGs'],
+]
+const EXAMPLES = ['Make three iPhone slides about offline sync', 'Translate everything into German and French', 'Design a dark purple theme and apply it']
+
+/** The interesting bit of a tool call: the command, URL or query, else its input. */
+const summary = ({ input }: Approval) => String(input.command ?? input.url ?? input.query ?? input.file_path ?? JSON.stringify(input))
+
+/** A setting remembered between launches. */
+function useStored<T extends string>(key: string, initial: T) {
+  const [v, setV] = useState<T>(() => { try { return (localStorage.getItem(key) as T | null) ?? initial } catch { return initial } })
+  useEffect(() => { try { localStorage.setItem(key, v) } catch { /* not remembered */ } }, [key, v])
+  return [v, setV] as const
+}
+
+/** Writes attachments into the app data folder, so `claude` can read them by path. */
+async function saveAttachments(files: Attachment[]) {
+  const { BaseDirectory, mkdir, writeFile } = await import('@tauri-apps/plugin-fs')
+  const { appDataDir, join } = await import('@tauri-apps/api/path')
+  const opt = { baseDir: BaseDirectory.AppData }
+  await mkdir('attachments', { ...opt, recursive: true })
+  return Promise.all(files.map(async ({ blob }) => {
+    const name = `attachments/${crypto.randomUUID()}.${extOfType(blob.type)}`
+    await writeFile(name, new Uint8Array(await blob.arrayBuffer()), opt)
+    return join(await appDataDir(), name)
+  }))
+}
 
 export function Chat({ hidden }: { hidden: boolean }) {
   const [items, setItems] = useState<Item[]>([])
   const [input, setInput] = useState('')
+  const [files, setFiles] = useState<Attachment[]>([])
+  const [over, setOver] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useStored<keyof typeof MODES>('chat-mode', 'manual')
+  const [model, setModel] = useStored<keyof typeof MODELS>('chat-model', '')
+  const [effort, setEffort] = useStored<keyof typeof EFFORTS>('chat-effort', '')
+  const [asks, setAsks] = useState<Approval[]>([])
+  const [linked, setLinked] = useState<boolean | null>(null)
   const session = useRef<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
   const add = (it: Item) => setItems((all) => [...all, it])
 
   useEffect(() => {
     list.current?.scrollTo(0, list.current.scrollHeight)
-  }, [items])
+  }, [items, asks])
+
+  // re-checked each time the tab opens, so running the command and coming back updates it
+  useEffect(() => {
+    if (hidden) return
+    setLinked(null)
+    claudeLinked().then((l) => setLinked(l ?? false))
+  }, [hidden])
+
+  useEffect(() => {
+    onApproval((a) => setAsks((all) => [...all, a]))
+    return () => { onApproval(null) }
+  }, [])
+
+  const attach = (list: Iterable<File | Blob>) => {
+    const imgs = [...list].filter((f) => f.type.startsWith('image/'))
+    setFiles((all) => [...all, ...imgs.map((blob) => ({ blob, url: URL.createObjectURL(blob) }))])
+  }
+
+  const decide = (a: Approval, ok: boolean) => {
+    a.resolve(ok)
+    setAsks((all) => all.filter((x) => x !== a))
+    add({ role: 'tool', text: `${ok ? 'Allowed' : 'Denied'} ${a.tool}: ${summary(a)}` })
+  }
 
   // stream-json lines from the running `claude`
   useEffect(() => {
@@ -37,7 +109,16 @@ export function Chat({ hidden }: { hidden: boolean }) {
         if (ev.type === 'assistant') {
           for (const c of ev.message.content) {
             if (c.type === 'text' && c.text.trim()) add({ role: 'assistant', text: c.text })
-            if (c.type === 'tool_use') add({ role: 'tool', text: c.name.replace(/^mcp__screenshot-studio__/, '') })
+            if (c.type === 'tool_use') add({ role: 'tool', text: c.name.replace(/^mcp__screenshot-studio__/, '').replaceAll('_', ' '), id: c.id, input: JSON.stringify(c.input, null, 2) })
+          }
+        }
+        // a tool's output arrives as the next user turn: attach it to its call
+        if (ev.type === 'user' && Array.isArray(ev.message?.content)) {
+          for (const c of ev.message.content) {
+            if (c.type !== 'tool_result') continue
+            const result = typeof c.content === 'string' ? c.content
+              : (c.content ?? []).map((p: { type: string; text?: string }) => p.text ?? `[${p.type}]`).join('\n')
+            setItems((all) => all.map((it) => (it.id === c.tool_use_id ? { ...it, result, failed: !!c.is_error } : it)))
           }
         }
         if (ev.type === 'result' && ev.is_error) add({ role: 'error', text: ev.result ?? ev.subtype })
@@ -46,22 +127,30 @@ export function Chat({ hidden }: { hidden: boolean }) {
     return () => off?.()
   }, [])
 
-  const send = async () => {
-    const message = input.trim()
-    if (!message || busy) return
+  const send = async (text = input) => {
+    const message = text.trim()
+    if ((!message && !files.length) || busy) return
+    const sent = files
     setInput('')
-    add({ role: 'user', text: message })
+    setFiles([])
+    add({ role: 'user', text: message, images: sent.map((f) => f.url) })
     setBusy(true)
-    const mcp = JSON.stringify({ mcpServers: { 'screenshot-studio': { type: 'http', url: MCP_URL } } })
-    const args = [
-      '-p', message,
-      '--output-format', 'stream-json', '--verbose',
-      '--mcp-config', mcp,
-      '--allowedTools', 'mcp__screenshot-studio', 'Read', 'Glob',
-      '--append-system-prompt', SYSTEM,
-      ...(session.current ? ['--resume', session.current] : []),
-    ]
     try {
+      const paths = sent.length ? await saveAttachments(sent) : []
+      const prompt = [message || 'Here are some images.', ...(paths.length ? ['', 'Attached images:', ...paths] : [])].join('\n')
+      const mcp = JSON.stringify({ mcpServers: { 'screenshot-studio': { type: 'http', url: MCP_URL } } })
+      const args = [
+        '-p', prompt,
+        '--output-format', 'stream-json', '--verbose',
+        '--mcp-config', mcp,
+        '--allowedTools', 'mcp__screenshot-studio', 'Read', 'Glob', 'WebSearch', 'WebFetch',
+        '--permission-mode', mode,
+        '--permission-prompt-tool', APPROVE_TOOL,
+        '--append-system-prompt', SYSTEM,
+        ...(model ? ['--model', model] : []),
+        ...(effort ? ['--effort', effort] : []),
+        ...(session.current ? ['--resume', session.current] : []),
+      ]
       const { invoke } = await import('@tauri-apps/api/core')
       await invoke('claude_chat', { args })
     } catch (e) {
@@ -70,37 +159,114 @@ export function Chat({ hidden }: { hidden: boolean }) {
     setBusy(false)
   }
 
-  const stop = async () => (await import('@tauri-apps/api/core')).invoke('claude_stop')
+  const stop = async () => {
+    asks.forEach((a) => a.resolve(false))
+    setAsks([])
+    await (await import('@tauri-apps/api/core')).invoke('claude_stop')
+  }
+
+  const status = linked === null ? ['checking', 'Checking Claude Code…'] : linked ? ['ok', 'Claude Code connected'] : ['off', 'Terminal not connected']
 
   return (
-    <div className="chat" hidden={hidden}>
+    <div
+      className={`chat ${over ? 'dropping' : ''}`}
+      hidden={hidden}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true) } }}
+      onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); attach(e.dataTransfer.files) }}
+    >
+      <header className="chat-head">
+        <button className={`chat-status ${status[0]}`} onClick={openSettings} title={linked ? 'Terminal Claude Code sessions can use this app too' : 'The Claude tab works either way. Open Settings to connect terminal sessions.'}>
+          <i />{status[1]}
+        </button>
+        <button onClick={() => { session.current = null; setItems([]) }} disabled={busy || !items.length} title="Start a new conversation">New chat</button>
+      </header>
+
       <div className="chat-list" ref={list}>
         {items.length === 0 && (
-          <div className="hint">
-            <p>Ask Claude to build or change your screenshots: “Make three iPhone slides about offline sync, in the Ocean theme.” Screenshot files can be given as paths.</p>
-            <p>Runs your installed Claude Code. To use it from a terminal session instead, connect it once:</p>
-            <code onClick={() => navigator.clipboard.writeText(ADD_COMMAND)} title="Click to copy">{ADD_COMMAND}</code>
+          <div className="chat-empty">
+            <h3>What can Claude do?</h3>
+            <ul className="can">
+              {CAN.map(([t, d]) => <li key={t}><b>{t}</b><span>{d}</span></li>)}
+            </ul>
+            <h3>Try</h3>
+            <div className="examples">
+              {EXAMPLES.map((x) => <button key={x} onClick={() => send(x)} disabled={busy}>{x}</button>)}
+            </div>
           </div>
         )}
-        {items.map((it, i) => <div key={i} className={`msg ${it.role}`}>{it.text}</div>)}
+        {items.map((it, i) => it.input ? (
+          <details key={i} className={`msg tool ${it.failed ? 'failed' : ''}`}>
+            <summary title="Show details">{it.text}</summary>
+            <pre>{it.input}</pre>
+            {it.result !== undefined && <pre>{it.result || '(no output)'}</pre>}
+          </details>
+        ) : (
+          <div key={i} className={`msg ${it.role}`}>
+            {!!it.images?.length && <div className="thumbs">{it.images.map((u) => <img key={u} src={u} alt="" />)}</div>}
+            {it.text}
+          </div>
+        ))}
+        {asks.map((a, i) => (
+          <div key={i} className="msg ask">
+            <b>Claude wants to use {a.tool}</b>
+            <code>{summary(a)}</code>
+            <div className="row">
+              <button onClick={() => decide(a, false)}>Deny</button>
+              <button className="primary" onClick={() => decide(a, true)}>Allow</button>
+            </div>
+          </div>
+        ))}
         {busy && <div className="msg typing"><i /><i /><i /></div>}
       </div>
+
       <form className="chat-input" onSubmit={(e) => { e.preventDefault(); send() }}>
-        <textarea
-          rows={3}
-          value={input}
-          placeholder="Message Claude…"
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              send()
-            }
-          }}
-        />
-        <div className="row">
-          <button type="button" onClick={() => { session.current = null; setItems([]) }} disabled={busy || !items.length} title="Start a new conversation">New chat</button>
-          {busy ? <button type="button" onClick={stop}>Stop</button> : <button type="submit" className="primary" disabled={!input.trim()}>Send</button>}
+        <div className="composer">
+          {!!files.length && (
+            <div className="thumbs">
+              {files.map((f) => (
+                <span key={f.url}>
+                  <img src={f.url} alt="" />
+                  <button type="button" title="Remove" onClick={() => setFiles((all) => all.filter((x) => x !== f))}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <textarea
+            rows={3}
+            value={input}
+            placeholder="Message Claude… drop or paste images here"
+            onChange={(e) => setInput(e.target.value)}
+            onPaste={(e) => {
+              const imgs = [...e.clipboardData.files].filter((f) => f.type.startsWith('image/'))
+              if (imgs.length) { e.preventDefault(); attach(imgs) }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                send()
+              }
+            }}
+          />
+          <div className="composer-bar">
+            <button type="button" className="icon" title="Attach images" onClick={() => picker.current!.click()}>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 12.5l-8.5 8.5a5 5 0 0 1-7-7L14 5.5a3.3 3.3 0 0 1 4.7 4.7L10.2 18.7a1.7 1.7 0 0 1-2.4-2.4L15.5 8.6" /></svg>
+            </button>
+            <input ref={picker} type="file" accept="image/*" multiple hidden onChange={(e) => { attach(e.target.files ?? []); e.target.value = '' }} />
+            <select value={model} onChange={(e) => setModel(e.target.value as keyof typeof MODELS)} disabled={busy} title="Model">
+              {Object.entries(MODELS).map(([m, label]) => <option key={m} value={m}>{label}</option>)}
+            </select>
+            <select value={effort} onChange={(e) => setEffort(e.target.value as keyof typeof EFFORTS)} disabled={busy} title="How hard Claude thinks">
+              {Object.entries(EFFORTS).map(([m, label]) => <option key={m} value={m}>{label}</option>)}
+            </select>
+            <select value={mode} onChange={(e) => setMode(e.target.value as keyof typeof MODES)} disabled={busy} title="What Claude may do without asking">
+              {Object.entries(MODES).map(([m, label]) => <option key={m} value={m}>{label}</option>)}
+            </select>
+            <span className="spacer" />
+            {busy
+              ? <button type="button" onClick={stop}>Stop</button>
+              : <button type="submit" className="primary" disabled={!input.trim() && !files.length}>Send</button>}
+          </div>
         </div>
       </form>
     </div>

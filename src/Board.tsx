@@ -25,8 +25,9 @@ export function Board({ children, fitKey, onEmptyClick }: { children: ReactNode;
 
   const fit = () => {
     const s = stage.current!, b = board.current!
-    const z = clamp(Math.min((s.clientWidth - 96) / b.offsetWidth, (s.clientHeight - 96) / b.offsetHeight), 0.05, 1)
-    setView({ z, x: (s.clientWidth - b.offsetWidth * z) / 2, y: (s.clientHeight - b.offsetHeight * z) / 2 })
+    // room below for the selected slide's bar
+    const z = clamp(Math.min((s.clientWidth - 96) / b.offsetWidth, (s.clientHeight - 160) / b.offsetHeight), 0.05, 1)
+    setView({ z, x: (s.clientWidth - b.offsetWidth * z) / 2, y: (s.clientHeight - b.offsetHeight * z) / 2 - 24 })
   }
   useLayoutEffect(fit, [fitKey])
 

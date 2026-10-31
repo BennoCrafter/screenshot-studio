@@ -54,6 +54,12 @@ export function resized(s0: Slide, s: Slide, p: Part, ratio: number): Partial<Sl
   return i0 ? withItem(s, p, (i) => ({ ...i, w: r(i0.w, 0.02, 3), h: r(i0.h, 0.02, 3), size: i0.size && r(i0.size, 0.005, 0.5) })) : {}
 }
 
+/** A text, image or shape turned to `deg` degrees clockwise. */
+export function rotated(s: Slide, p: Part, deg: number): Partial<Slide> {
+  if (isTextPart(p)) return { [`${p}Box`]: { ...(s[`${p}Box`] ?? NO_BOX), rotation: deg } }
+  return withItem(s, p, (i) => ({ ...i, rotation: deg }))
+}
+
 /** `p` back where the layout puts it (built-ins) or in the middle (items). */
 export function reset(s: Slide, p: Part): Partial<Slide> {
   if (p === 'device') return { device: { ...s.device, x: 0, y: 0 } }

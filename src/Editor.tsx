@@ -3,14 +3,16 @@ import { Board } from './Board'
 import { DEVICES, DEVICE_BY_ID } from './devices/models'
 import type { DevicePose } from './devices/render3d'
 import { Chat } from './Chat'
+import { Themes } from './Themes'
+import { openSettings } from './Settings'
 import { animate } from './motion'
-import { ask, isDesktop, saveFile, saveFiles } from './native'
+import { ask, isDesktop, saveFile } from './native'
 import { LANGUAGES, languageName, languagesOf, loadImage, PROJECT_FILE, projectToFile, type Project } from './project'
-import { added, isDevice, isText, itemOf, missingBuiltIns, moved, newItem, partName, removed, reset, resized, restack, shotOf, withShot, withText, type Shot } from './elements'
-import { layersOf, localize, PLATFORMS, renderSlide, SIZES, THEMES, type Item, type Part, type Platform, type SizeName, type Slide, type Target } from './render'
+import { added, isDevice, isText, isTextPart, itemOf, missingBuiltIns, moved, newItem, partName, removed, reset, resized, restack, rotated, shotOf, withShot, withText, type Shot } from './elements'
+import { layersOf, localize, PLATFORMS, SIZES, type Item, type Part, type Platform, type SizeName, type Slide, type Style, type Target } from './render'
 import { SlideCanvas } from './SlideCanvas'
-import { Templates } from './TemplateGallery'
-import { adaptTarget, ALL_PLATFORMS, poseFor, toData, toTarget, type Template } from './templates'
+import { Export } from './Export'
+import { adaptTarget, ALL_PLATFORMS, poseFor } from './templates'
 
 type Updater<T> = (fn: (v: T) => T) => void
 /** One element on one slide. */
@@ -40,12 +42,17 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     commit(() => p)
   }
 
+  const [sideW, setSideW] = useWidth('side-w', 300)
+  const [toolsW, setToolsW] = useWidth('tools-w', 220)
+  const [dragged, setDragged] = useState<number | null>(null)
+  const imageInput = useRef<HTMLInputElement>(null)
   const [ti, setTi] = useState(0)
   const target = project.targets[Math.min(ti, project.targets.length - 1)]
   const slides = target.slides
   const [selection, setSelection] = useState<Sel[]>([])
   const [editing, setEditing] = useState<Sel | null>(null) // text being typed on the slide
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null)
   const selectSlide = (id: string | null) => {
     setSelection(id ? [{ slide: id, part: 'device' }] : [])
     setEditing(null)
@@ -185,6 +192,28 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     }, s)))
     setSelection(picked)
   }
+  /** The picked elements on slide `fromId` moved onto `toId`, which sits (dx, dy) slide sizes away, keeping where they
+   *  are on screen. Text in every language goes along; a headline, subtitle or device replaces the one already there. */
+  const transfer = (fromId: string, toId: string, dx: number, dy: number) => {
+    const parts = selection.filter((x) => x.slide === fromId).map((x) => x.part)
+    setSlides((all) => {
+      let src = all.find((s) => s.id === fromId)!, to = all.find((s) => s.id === toId)!
+      for (const part of parts) {
+        if (!layersOf(src).includes(part)) continue
+        to = { ...to, ...added(to, itemOf(src, part) ?? part) }
+        if (part === 'device') to = { ...to, device: src.device, image: src.image, outerImage: src.outerImage }
+        if (isTextPart(part)) to = { ...to, [part]: src[part], [`${part}Box`]: src[`${part}Box`] }
+        for (const [l, t] of Object.entries(src.translations ?? {})) {
+          const text = isTextPart(part) ? t[part] : t.items?.[part]
+          if (text) to = { ...to, ...withText(to, part, text, l) }
+        }
+        to = { ...to, ...moved(to, to, part, -dx, -dy) }
+        src = { ...src, ...removed(src, part) }
+      }
+      return all.map((s) => (s.id === fromId ? src : s.id === toId ? to : s))
+    })
+    setSelection(parts.map((part) => ({ slide: toId, part })))
+  }
   const duplicate = () => {
     copy()
     paste()
@@ -194,7 +223,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
   // duplicate, ⌘A picks every element, Delete removes the picked ones
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (typing(e.target)) return
+      if (typing(e.target) || document.querySelector('dialog[open]')) return
       const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase()
       if (e.key === 'Escape') { selectSlide(null); setMenu(null) }
       else if (mod && key === 'z') travel(e.shiftKey ? future : past, e.shiftKey ? past : future)
@@ -211,16 +240,8 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  const applyTheme = (name: string) =>
-    setSlides((all) => all.map((s) => ({ ...s, ...THEMES[name] })))
-
-  const applyTemplate = (t: Template) => {
-    const data = t.targets[target.platform]
-    if (!data) return
-    const next = toTarget(data, slides)
-    setTarget(() => next)
-    selectSlide(next.slides[0].id)
-  }
+  const applyTheme = ({ bg1, bg2, angle, textColor, layout }: Style) =>
+    setSlides((all) => all.map((s) => ({ ...s, bg1, bg2, angle, textColor, layout })))
 
   const addSlide = () => {
     const s = { ...(sel ?? slides[slides.length - 1]), id: crypto.randomUUID(), image: null, outerImage: null }
@@ -228,11 +249,48 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     selectSlide(s.id)
   }
 
+  const duplicateSlide = (src: Slide) => {
+    const copy = { ...src, id: crypto.randomUUID() }
+    setSlides((all) => all.toSpliced(all.findIndex((s) => s.id === src.id) + 1, 0, copy))
+    selectSlide(copy.id)
+  }
+
   const removeSlide = (sel: Slide) => {
     if (slides.length === 1) return
     const rest = slides.filter((s) => s.id !== sel.id)
     setSlides(() => rest)
     selectSlide(rest[0].id)
+  }
+
+  const moveTo = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= slides.length) return
+    setSlides((all) => all.toSpliced(from, 1).toSpliced(to, 0, all[from]))
+  }
+
+  // Dragging a slide carries a thumbnail of it, and the others make room as it passes over them.
+  const dragStart = (e: React.DragEvent, i: number) => {
+    e.dataTransfer.effectAllowed = 'move'
+    const src = document.querySelector<HTMLCanvasElement>(`canvas[data-slide="${slides[i].id}"]`)
+    if (src) {
+      const k = document.createElement('canvas')
+      k.width = 120
+      k.height = (120 * src.height) / src.width
+      k.getContext('2d')!.drawImage(src, 0, 0, k.width, k.height)
+      k.style.cssText = 'position:fixed;left:-9999px;border-radius:8px'
+      document.body.append(k)
+      e.dataTransfer.setDragImage(k, k.width / 2, k.height / 2)
+      setTimeout(() => k.remove())
+    }
+    setDragged(i)
+  }
+  const dragOver = (e: React.DragEvent, i: number) => {
+    if (dragged === null) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragged !== i) {
+      moveTo(dragged, i)
+      setDragged(i)
+    }
   }
 
   const move = (sel: Slide, dir: -1 | 1) => {
@@ -243,23 +301,12 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     setSlides(() => next)
   }
 
-  // ponytail: one PNG per slide and language (a folder on desktop, downloads on the web); add a zip when exporting many sizes at once
-  const exportAll = async () => {
-    const files = []
-    for (const l of langs) {
-      for (const [i, s] of slides.entries()) {
-        files.push({ name: `${project.name}-${target.platform}-${l}-${i + 1}-${size[0]}x${size[1]}.png`, blob: await renderSlide(localize(s, l), size) })
-      }
-    }
-    await saveFiles(files)
-  }
-
   const saveToFile = async () => saveFile(`${project.name}.ssproj`, await projectToFile(project), PROJECT_FILE)
 
   return (
-    <div className="app">
+    <div className="app" style={{ '--side-w': `${sideW}px`, '--tools-w': `${toolsW}px` } as React.CSSProperties}>
       <header className="topbar" data-tauri-drag-region>
-        <button onClick={onClose} title="All projects">‹ Projects</button>
+        <button onClick={onClose} title="All projects"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M15 18l-6-6 6-6" /></svg>Projects</button>
         <input
           className="project-name"
           value={project.name}
@@ -276,26 +323,15 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
             </span>
           ))}
           {missing.length > 0 && (
-            <select value="" onChange={(e) => addPlatform(e.target.value as Platform)} title="Add a platform, starting from this one's slides">
-              <option value="" disabled>+</option>
-              {missing.map((p) => <option key={p} value={p}>Add {PLATFORMS[p].label}</option>)}
-            </select>
+            <button className="tab-add" title="Add a platform, starting from this one's slides" onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              setAddMenu({ x: r.left, y: r.bottom + 6 })
+            }}>+</button>
           )}
         </nav>
-        <Templates
-          platform={target.platform}
-          onApply={applyTemplate}
-          current={() => ({ targets: Object.fromEntries(project.targets.map((t) => [t.platform, { platform: t.platform, size: t.size, slides: t.slides.map(toData) }])) })}
-        />
-        <label>
-          Theme
-          <select value="" onChange={(e) => applyTheme(e.target.value)}>
-            <option value="" disabled>Apply…</option>
-            {Object.keys(THEMES).map((t) => <option key={t}>{t}</option>)}
-          </select>
-        </label>
-        <label>
-          Size
+        <Themes current={sel ?? slides[0]} title={localize(sel ?? slides[0], lang).title.split('\n')[0] || 'Your app'} onApply={applyTheme} />
+        <label title="The pixel size the PNGs are exported at. The App Store asks for one of these per device class; the first is the one it requires.">
+          Export size
           <select value={target.size} onChange={(e) => setSizeName(e.target.value as SizeName)}>
             {PLATFORMS[target.platform].sizes.map((n) => (
               <option key={n} value={n}>{n} · {SIZES[n][0]}×{SIZES[n][1]}</option>
@@ -303,9 +339,10 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
           </select>
         </label>
         <span className="spacer" />
+        <button onClick={openSettings} title="Settings (⌘,)" aria-label="Settings"><Icon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></button>
         <button onClick={saveToFile} title="Save the project, screenshots included, to a .ssproj file">Save File…</button>
         <button onClick={addSlide}>Add slide</button>
-        <button className="primary" onClick={exportAll}>Export PNGs</button>
+        <Export project={project} />
       </header>
 
       <nav className="langbar">
@@ -322,26 +359,46 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       </nav>
 
       <aside className="tools">
+        <Resizer edge="right" set={(x) => setToolsW(Math.min(420, Math.max(180, x)))} />
         <h3>Add</h3>
         <div className="add-grid">
-          <button onClick={() => insert(() => newItem('text'))}>Text block</button>
-          <button onClick={insertDevice}>Device mockup</button>
-          <button onClick={() => insert(() => newItem('rect'))}>Rectangle</button>
-          <button onClick={() => insert(() => newItem('ellipse'))}>Ellipse</button>
-          <label className="button">
-            Image
-            <input type="file" accept="image/*" hidden onChange={async (e) => {
-              const f = e.target.files?.[0]
-              e.target.value = ''
-              if (!f) return
-              const img = await loadImage(f)
-              insert(() => newItem('image', img))
-            }} />
-          </label>
-          {missingBuiltIns(sel ?? slides[0]).filter((p) => p !== 'device').map((p) => (
-            <button key={p} onClick={() => insert(() => p)}>{partName(sel ?? slides[0], p)}</button>
-          ))}
+          <button onClick={() => insert(() => newItem('text'))}><Icon d="M5 6V4h14v2M12 4v16M9 20h6" />Text</button>
+          <button onClick={() => imageInput.current!.click()}><Icon d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9.5h.01" />Image</button>
+          <button onClick={insertDevice}><Icon d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM11 18h2" />Device</button>
+          <button onClick={() => insert(() => newItem('rect'))}><Icon d="M4 6h16v12H4z" />Rectangle</button>
+          <button onClick={() => insert(() => newItem('ellipse'))}><Icon d="M12 5c4.4 0 8 3.1 8 7s-3.6 7-8 7-8-3.1-8-7 3.6-7 8-7z" />Ellipse</button>
+          <input ref={imageInput} type="file" accept="image/*" hidden onChange={async (e) => {
+            const f = e.target.files?.[0]
+            e.target.value = ''
+            if (!f) return
+            const img = await loadImage(f)
+            insert(() => newItem('image', img))
+          }} />
         </div>
+        {missingBuiltIns(sel ?? slides[0]).filter((p) => p !== 'device').map((p) => (
+          <button key={p} className="restore" onClick={() => insert(() => p)}>Restore {partName(sel ?? slides[0], p).toLowerCase()}</button>
+        ))}
+
+        <h3>Slides <span>{slides.length}</span></h3>
+        <ol className="slide-list">
+          {slides.map((s, i) => (
+            <li
+              key={s.id}
+              className={`${s.id === sel?.id ? 'on' : ''} ${dragged === i ? 'dragging' : ''}`}
+              draggable
+              onDragStart={(e) => dragStart(e, i)}
+              onDragEnd={() => setDragged(null)}
+              onDragOver={(e) => dragOver(e, i)}
+              onDrop={(e) => e.preventDefault()}
+            >
+              <button onClick={() => selectSlide(s.id)} title="Drag to reorder"><b>{i + 1}</b><span>{localize(s, lang).title.split('\n')[0] || 'Untitled'}</span></button>
+              <button title="Duplicate slide" onClick={() => duplicateSlide(s)}>⧉</button>
+              <button title="Delete slide" disabled={slides.length === 1} onClick={() => removeSlide(s)}>×</button>
+            </li>
+          ))}
+        </ol>
+        <button className="restore" onClick={addSlide}>+ Add slide</button>
+
         {sel && (
           <>
             <h3>Layers</h3>
@@ -366,25 +423,57 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       </aside>
 
       <Board fitKey={`${target.platform}-${target.size}`} onEmptyClick={() => selectSlide(null)}>
-        {slides.map((s) => (
-          <SlideCanvas
+        {slides.map((s, i) => (
+          <div
             key={s.id}
-            slide={localize(s, lang)}
-            size={size}
-            selected={selection.filter((x) => x.slide === s.id).map((x) => x.part)}
-            editing={editing?.slide === s.id ? editing.part : null}
-            onPress={(part, additive) => press(s, part, additive)}
-            onGrab={(part) => grab(s, part)}
-            onMenu={(_, x, y) => setMenu({ x, y })}
-            onEdit={(part) => setEditing(part ? { slide: s.id, part } : null)}
-            onEditText={(part, text) => setText(s, part, text)}
-            onShot={(part, patch) => update(s.id, withShot(s, part, patch))}
-          />
+            className={`slide-col ${dragged === i ? 'dragging' : ''}`}
+            onDragOver={(e) => dragOver(e, i)}
+            onDrop={(e) => e.preventDefault()}
+          >
+            <SlideCanvas
+              slide={localize(s, lang)}
+              size={size}
+              selected={selection.filter((x) => x.slide === s.id).map((x) => x.part)}
+              editing={editing?.slide === s.id ? editing.part : null}
+              onPress={(part, additive) => press(s, part, additive)}
+              onGrab={(part) => grab(s, part)}
+              onMenu={(_, x, y) => setMenu({ x, y })}
+              onEdit={(part) => setEditing(part ? { slide: s.id, part } : null)}
+              onEditText={(part, text) => setText(s, part, text)}
+              onRotate={(part, deg) => update(s.id, rotated(s, part, deg))}
+              onTransfer={(to, dx, dy) => transfer(s.id, to, dx, dy)}
+              onShot={(part, patch) => update(s.id, withShot(s, part, patch))}
+            />
+            {s.id === sel?.id && (
+              <div className="slide-bar" onPointerDown={(e) => e.stopPropagation()}>
+                <span className="handle" draggable title="Drag to move this slide" onDragStart={(e) => dragStart(e, i)} onDragEnd={() => setDragged(null)}>
+                  ⠿ Slide {i + 1} of {slides.length}
+                </span>
+                <button title="Duplicate slide" onClick={() => duplicateSlide(s)}>Duplicate</button>
+                <button title="Delete slide" className="danger" disabled={slides.length === 1} onClick={() => removeSlide(s)}>Delete</button>
+              </div>
+            )}
+          </div>
         ))}
+        <button className="add-slide" title="Add a slide" aria-label="Add a slide" onClick={addSlide}>
+          <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M12 5v14M5 12h14" /></svg>
+        </button>
       </Board>
+      {addMenu && (
+        <div className="menu-backdrop" onPointerDown={() => setAddMenu(null)}>
+          <div className="menu" style={{ left: addMenu.x, top: addMenu.y }} onPointerDown={(e) => e.stopPropagation()} onClick={() => setAddMenu(null)}>
+            {missing.map((p) => <button key={p} onClick={() => addPlatform(p)}>Add {PLATFORMS[p].label}</button>)}
+          </div>
+        </div>
+      )}
       {menu && (
         <div className="menu-backdrop" onPointerDown={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null) }}>
-          <div className="menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(e) => e.stopPropagation()} onClick={() => setMenu(null)}>
+          <div className="menu" ref={(el) => {
+            if (!el) return
+            const r = el.getBoundingClientRect()
+            el.style.left = `${Math.max(8, Math.min(menu.x, innerWidth - r.width - 8))}px`
+            el.style.top = `${Math.max(8, Math.min(menu.y, innerHeight - r.height - 8))}px`
+          }} onPointerDown={(e) => e.stopPropagation()} onClick={() => setMenu(null)}>
             {selection.length === 1 && sel && isText(sel, selection[0].part) && (
               <button onClick={() => setEditing(selection[0])}>Edit text</button>
             )}
@@ -400,11 +489,18 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
             <button onClick={() => eachPicked(reset)}>Reset position</button>
             <button onClick={remove}>Delete<kbd>⌫</kbd></button>
             <button onClick={() => travel(past, future)} disabled={!past.current.length}>Undo<kbd>⌘Z</kbd></button>
+            {sel && <>
+              <hr />
+              <button onClick={() => move(sel, -1)} disabled={slides.indexOf(sel) === 0}>Move slide left</button>
+              <button onClick={() => move(sel, 1)} disabled={slides.indexOf(sel) === slides.length - 1}>Move slide right</button>
+              <button onClick={() => removeSlide(sel)} disabled={slides.length === 1}>Delete slide</button>
+            </>}
           </div>
         </div>
       )}
 
       <aside className="side">
+        <Resizer edge="left" set={(x) => setSideW(Math.min(700, Math.max(260, window.innerWidth - x)))} />
         {isDesktop && (
           <nav className="platform-tabs side-tabs">
             <span className={tab === 'inspector' ? 'on' : ''}><button onClick={() => setTab('inspector')}>Inspector</button></span>
@@ -547,15 +643,38 @@ function SlideInspector({ sel, device, text, placeholder, setText, index, count,
         <input type="range" min={0} max={360} value={sel.angle} onChange={(e) => update({ angle: +e.target.value })} />
       </label>
       <div className="row">
-        <button onClick={() => move(-1)}>←</button>
-        <button onClick={() => move(1)}>→</button>
-        <button className="danger" onClick={remove} disabled={count === 1}>Delete</button>
+        <button onClick={() => move(-1)} disabled={index === 0} title="Move slide left">← Move</button>
+        <button onClick={() => move(1)} disabled={index === count - 1} title="Move slide right">Move →</button>
+        <button className="danger" onClick={remove} disabled={count === 1}>Delete slide</button>
       </div>
     </div>
   )
 }
 
 /** The slide's elements, frontmost first: click to pick (Shift adds), arrows move one up or down the stack. */
+/** A panel width, remembered between launches. */
+function useWidth(key: string, initial: number) {
+  const [w, setW] = useState(() => { try { return Number(localStorage.getItem(key)) || initial } catch { return initial } })
+  useEffect(() => { try { localStorage.setItem(key, String(w)) } catch { /* not remembered */ } }, [key, w])
+  return [w, setW] as const
+}
+
+/** A drag handle on a panel's edge; `set` gets the pointer's x. */
+function Resizer({ edge, set }: { edge: 'left' | 'right'; set: (x: number) => void }) {
+  return (
+    <div
+      className={`resizer ${edge}`}
+      title="Drag to resize"
+      onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+      onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && set(e.clientX)}
+    />
+  )
+}
+
+const Icon = ({ d }: { d: string }) => (
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={d} /></svg>
+)
+
 function Layers({ sel, picked, pick, update }: {
   sel: Slide
   picked: Part[]

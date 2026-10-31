@@ -24,7 +24,7 @@ export function StartPage({ onOpen, onCreate }: { onOpen: (id: string) => void; 
         <img className="app-icon" src="/favicon.svg" width="72" height="72" alt="" />
         <h1>Screenshot Studio</h1>
         <p className="hint">App Store screenshots for iPhone, iPad and Mac</p>
-        <button className="start-action" onClick={() => chooser.current!.showModal()}>
+        <button className="start-action" onClick={() => { chooser.current!.showModal(); chooser.current!.focus() }}>
           <strong>Create New Project…</strong>
           <small>Start from a template</small>
         </button>
@@ -75,7 +75,7 @@ export function StartPage({ onOpen, onCreate }: { onOpen: (id: string) => void; 
           ))}
         </ul>
       </section>
-      <dialog ref={chooser} className="chooser" onClick={(e) => e.target === chooser.current && chooser.current!.close()}>
+      <dialog ref={chooser} tabIndex={-1} className="chooser" onClick={(e) => e.target === chooser.current && chooser.current!.close()}>
         <Chooser onCancel={() => chooser.current!.close()} onCreate={onCreate} />
       </dialog>
     </div>
@@ -96,12 +96,12 @@ function Chooser({ onCancel, onCreate }: { onCancel: () => void; onCreate: (p: P
     setPicked(t)
     setChosen(defaults(t, tb))
   }
-  const create = () =>
+  const create = async () =>
     onCreate({
       id: crypto.randomUUID(),
       name: name.trim() || 'Untitled',
       updated: Date.now(),
-      targets: chosen.map((p) => toTarget(picked.targets[p]!)),
+      targets: await Promise.all(chosen.map((p) => toTarget(picked.targets[p]!))),
     })
 
   return (
