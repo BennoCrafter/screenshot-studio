@@ -9,13 +9,13 @@
 </p>
 
 <p align="center">
-  <img src="screenshots/editor-window.png" width="85%" />
+  <img src="assets/screenshots/editor-window.png" width="85%" />
 </p>
 
 <p align="center">
-  <img src="screenshots/launcher-window.png" width="42%" />
+  <img src="assets/screenshots/launcher-window.png" width="42%" />
   &nbsp;
-  <img src="screenshots/new-project-window.png" width="42%" />
+  <img src="assets/screenshots/new-project-window.png" width="42%" />
 </p>
 
 ## Features
