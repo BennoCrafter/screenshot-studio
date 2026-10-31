@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { APPROVE_TOOL, MCP_URL, onApproval, type Approval } from './agent'
 import { extOfType } from './project'
 import { claudeLinked, openSettings } from './Settings'
@@ -9,12 +9,54 @@ import { claudeLinked, openSettings } from './Settings'
 type Item = { role: 'user' | 'assistant' | 'tool' | 'error'; text: string; images?: string[]; id?: string; input?: string; result?: string; failed?: boolean }
 type Attachment = { blob: Blob; url: string }
 
-const SYSTEM = 'You are the assistant inside Screenshot Studio, a desktop app for App Store screenshots. Use the screenshot-studio tools to look at and change what the user sees: call get_state first, edit with update_project, and check your work with render_slide. To translate, add language codes to the project\'s languages and fill each slide\'s translations; write natural, short store copy rather than word-for-word. Images the user attaches are listed as file paths: look at them with Read, and put them on slides by giving the path as a slide\'s image. You can also find images on the web (WebSearch, WebFetch) and give their URL instead of a path; the app downloads it. Keep replies short.'
+const SYSTEM = 'You are the assistant inside Screenshot Studio, a desktop app for App Store screenshots. Use the screenshot-studio tools to look at and change what the user sees: call get_state first, edit with update_project, and check your work with render_slide. To translate, add language codes to the project\'s languages and fill each slide\'s translations; write natural, short store copy rather than word-for-word. Images the user attaches are listed as file paths: look at them with Read, and put them on slides by giving the path as a slide\'s image. You can also find images on the web (WebSearch, WebFetch) and give their URL instead of a path; the app downloads it. Screenshots can differ per language: when the user gives screenshots for a language (say German UI), put them in that slide\'s translations[code].shots.device.image instead of image, which is the primary language\'s and the fallback for every other language. Keep replies short.'
 
 // Claude Code's permission modes. Anything a mode doesn't allow on its own comes to the chat for Allow / Deny.
 const MODES = { manual: 'Ask every time', acceptEdits: 'Auto-accept edits', auto: 'Auto', bypassPermissions: 'Allow everything' }
 const MODELS = { '': 'Default model', fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku' }
 const EFFORTS = { '': 'Default effort', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' }
+
+/** `**bold**` and `code` within a line. */
+const inline = (s: string) => s.split(/(\*\*[^*]+\*\*|`[^`]+`)/).map((p, i) =>
+  p.length > 4 && p.startsWith('**') && p.endsWith('**') ? <b key={i}>{p.slice(2, -2)}</b>
+    : p.length > 2 && p.startsWith('`') && p.endsWith('`') ? <code key={i}>{p.slice(1, -1)}</code>
+      : p)
+const cells = (line: string) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+const SEPARATOR = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/ // |---|:---:|
+
+/** Claude's text, with Markdown tables drawn as tables. */
+function Rich({ text }: { text: string }) {
+  const lines = text.split('\n'), out: ReactNode[] = []
+  let para: string[] = []
+  const flush = () => {
+    const t = para.join('\n').replace(/^\n+|\n+$/g, '')
+    if (t) out.push(<div key={out.length}>{inline(t)}</div>)
+    para = []
+  }
+  for (let i = 0; i < lines.length; i++) {
+    const next = lines[i + 1] ?? ''
+    if (!lines[i].includes('|') || !next.includes('|') || !SEPARATOR.test(next)) {
+      para.push(lines[i])
+      continue
+    }
+    flush()
+    const head = cells(lines[i])
+    const align = cells(next).map((c) => (c.endsWith(':') ? (c.startsWith(':') ? 'center' : 'right') : undefined))
+    const rows: string[][] = []
+    for (i += 2; i < lines.length && lines[i].includes('|'); i++) rows.push(cells(lines[i]))
+    i--
+    out.push(
+      <div className="md-table" key={out.length}>
+        <table>
+          <thead><tr>{head.map((h, j) => <th key={j} style={{ textAlign: align[j] }}>{inline(h)}</th>)}</tr></thead>
+          <tbody>{rows.map((r, k) => <tr key={k}>{head.map((_, j) => <td key={j} style={{ textAlign: align[j] }}>{inline(r[j] ?? '')}</td>)}</tr>)}</tbody>
+        </table>
+      </div>,
+    )
+  }
+  flush()
+  return out
+}
 
 /** What Claude can do here, in the user's words. */
 const CAN = [
@@ -138,7 +180,10 @@ export function Chat({ hidden }: { hidden: boolean }) {
     try {
       const paths = sent.length ? await saveAttachments(sent) : []
       const prompt = [message || 'Here are some images.', ...(paths.length ? ['', 'Attached images:', ...paths] : [])].join('\n')
-      const mcp = JSON.stringify({ mcpServers: { 'screenshot-studio': { type: 'http', url: MCP_URL } } })
+      const { invoke } = await import('@tauri-apps/api/core')
+      // the launch secret lets this chat in even when other sessions are shut out (Settings)
+      const token = await invoke<string>('mcp_chat_token')
+      const mcp = JSON.stringify({ mcpServers: { 'screenshot-studio': { type: 'http', url: MCP_URL, headers: { Authorization: `Bearer ${token}` } } } })
       const args = [
         '-p', prompt,
         '--output-format', 'stream-json', '--verbose',
@@ -151,7 +196,6 @@ export function Chat({ hidden }: { hidden: boolean }) {
         ...(effort ? ['--effort', effort] : []),
         ...(session.current ? ['--resume', session.current] : []),
       ]
-      const { invoke } = await import('@tauri-apps/api/core')
       await invoke('claude_chat', { args })
     } catch (e) {
       add({ role: 'error', text: String(e) || 'Claude Code stopped.' })
@@ -204,7 +248,7 @@ export function Chat({ hidden }: { hidden: boolean }) {
         ) : (
           <div key={i} className={`msg ${it.role}`}>
             {!!it.images?.length && <div className="thumbs">{it.images.map((u) => <img key={u} src={u} alt="" />)}</div>}
-            {it.text}
+            {it.role === 'assistant' ? <Rich text={it.text} /> : it.text}
           </div>
         ))}
         {asks.map((a, i) => (

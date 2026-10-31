@@ -31,6 +31,14 @@ export const openLink = async (url: string) => {
   await (await import('@tauri-apps/api/core')).invoke('open_url', { url })
 }
 
+/** Whether terminal Claude Code sessions may use the app's MCP server (the app's own chat always can). */
+const storedOthers = () => {
+  try { return localStorage.getItem('mcp-others') !== 'off' } catch { return true }
+}
+export async function applyMcpAccess(on = storedOthers()) {
+  if (isDesktop) await (await import('@tauri-apps/api/core')).invoke('mcp_allow_others', { on }).catch(() => {})
+}
+
 export const openSettings = () => window.dispatchEvent(new Event('open-settings'))
 
 type Update = import('@tauri-apps/plugin-updater').Update
@@ -46,6 +54,12 @@ export function Settings() {
   const dialog = useRef<HTMLDialogElement>(null)
   const [appearance, setAppearance] = useState(stored)
   const [linked, setLinked] = useState<boolean | null>(null)
+  const [others, setOthers] = useState(storedOthers)
+  const allowOthers = (on: boolean) => {
+    setOthers(on)
+    try { localStorage.setItem('mcp-others', on ? 'on' : 'off') } catch { /* not remembered */ }
+    applyMcpAccess(on)
+  }
   const [copied, setCopied] = useState(false)
   const [version, setVersion] = useState('')
   const [update, setUpdate] = useState<Update | null>(null)
@@ -121,6 +135,16 @@ export function Settings() {
       {isDesktop && (
         <>
           <h3>Claude Code</h3>
+          <label className="switch">
+            <input type="checkbox" checked={others} onChange={(e) => allowOthers(e.target.checked)} />
+            Let terminal Claude Code sessions use Screenshot Studio
+          </label>
+          <p className="hint">
+            {others
+              ? 'Any Claude Code session on this Mac that has the server added can see and change your open project.'
+              : 'Off: the MCP server only answers the Claude tab in this app. Terminal sessions get refused.'}
+          </p>
+          {others && (<>
           <p className={`status ${linked ? 'ok' : ''}`}>
             {linked === null ? 'Checking…' : linked ? '● Connected: terminal sessions can use Screenshot Studio.' : '○ Not connected to terminal sessions. The Claude tab works either way.'}
           </p>
@@ -135,6 +159,7 @@ export function Settings() {
             </>
           )}
           <p className="hint">Server address: {MCP_URL}</p>
+          </>)}
         </>
       )}
 

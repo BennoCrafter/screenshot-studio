@@ -50,6 +50,10 @@ const describe = (p: Project) => ({
     ...t,
     slides: t.slides.map((s) => ({
       ...s, image: !!s.image, outerImage: !!s.outerImage,
+      translations: s.translations && Object.fromEntries(Object.entries(s.translations).map(([l, t]) => [l, {
+        ...t,
+        shots: t.shots && Object.fromEntries(Object.entries(t.shots).map(([p, sh]) => [p, { image: !!sh.image, outerImage: !!sh.outerImage }])),
+      }])),
       items: s.items?.map((i) => (i.kind === 'image' || i.kind === 'device' ? { ...i, image: !!i.image, outerImage: !!i.outerImage } : i)),
     })),
   })),
@@ -116,6 +120,16 @@ async function fromAgent(prev: Project, input: Json): Promise<Project> {
             device,
             image: await image(s.image, was?.image),
             outerImage: await image(s.outerImage, was?.outerImage),
+            translations: s.translations && typeof s.translations === 'object'
+              ? Object.fromEntries(await Promise.all(Object.entries(s.translations as Record<string, Json>).map(async ([l, t]) => {
+                const kept = was?.translations?.[l]?.shots ?? {}
+                const given = (t.shots ?? {}) as Record<string, Json>
+                const parts = new Set([...Object.keys(kept), ...Object.keys(given)])
+                const shots = Object.fromEntries(await Promise.all([...parts].map(async (p) =>
+                  [p, { image: await image(given[p]?.image, kept[p]?.image), outerImage: await image(given[p]?.outerImage, kept[p]?.outerImage) }])))
+                return [l, { ...(t as object), shots }]
+              })))
+              : was?.translations,
             items: Array.isArray(s.items) ? await Promise.all((s.items as Json[]).map(async (i) => ({
               ...(i as unknown as Item),
               id: typeof i.id === 'string' ? i.id : crypto.randomUUID(),
@@ -165,7 +179,7 @@ const TOOLS: { name: string; description: string; inputSchema: Json; run: (host:
     description: `Replace the open project's name and targets with the given JSON, in the shape get_state returns. The app updates live and autosaves.
 languages: App Store language codes; the first is the primary. Each target: { platform, size, slides }. Each slide: { id?, title, subtitle, bg1, bg2 (hex), angle (gradient degrees), textColor, layout: "text-top" | "text-bottom", titleBox?, subtitleBox? ({ x, y: offset from the layout spot as a fraction of slide width/height, scale: 1 = default size, rotation?: degrees clockwise }), layers? (what's on the slide, back to front: "title", "subtitle", "device" and item ids; leaving one out deletes it), items? (added objects: { id?, kind: "text" | "rect" | "ellipse" | "image" | "device", x, y: centre as fractions of slide width/height, w, h: fractions of slide width, size?: text font size as a fraction of slide width, text?, rotation?: degrees clockwise (not devices), color?, image?, device? (a device pose like the slide's; its size is a fraction of slide width), outerImage? }; to show one it must also be in layers by id; translations[lang].items maps item ids to translated text), device, image?, outerImage? }.
 device: { model, finish, size (device width / slide width, ~0.3-1.2), yaw, pitch, roll (degrees), fold (degrees; 180 flat, 0 closed; foldables and Mac lid), x, y (offset as fraction of slide width/height) }. Omitted fields keep their value for an existing slide id, or get defaults.
-Slide title/subtitle are the primary language's text; translations: { "<code>": { title, subtitle } } holds the other languages'. Everything except text is shared by all languages.
+Slide title/subtitle are the primary language's text; translations: { "<code>": { title, subtitle, items?, shots? } } holds the other languages'. shots: { "device" or a device item's id: { image?, outerImage? } } gives that language its own screenshots (same values as image above; omitted ones keep what's there, and a language without one shows the primary language's). Everything else is shared by all languages.
 image / outerImage: true keeps the current screenshot, false removes it, a string is an absolute path or an http(s) URL of a PNG, JPEG, WebP or SVG to load. Slide order is array order; omit a slide to delete it, omit id to add one.`,
     inputSchema: {
       type: 'object',
@@ -342,7 +356,7 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
   },
 ]
 
-const INSTRUCTIONS = 'Screenshot Studio makes App Store screenshots: projects hold per-platform (iphone, duo, ipad, mac) sets of slides, each a gradient background, headline, subtitle and a screenshot in a 3D device frame. Call get_state first, change things with update_project, and check results with render_slide. Projects can have several languages: to translate, add codes to languages and write each slide\'s translations[code] (title, subtitle, items), then check with render_slide\'s language.'
+const INSTRUCTIONS = 'Screenshot Studio makes App Store screenshots: projects hold per-platform (iphone, duo, ipad, mac) sets of slides, each a gradient background, headline, subtitle and a screenshot in a 3D device frame. Call get_state first, change things with update_project, and check results with render_slide. Projects can have several languages: to translate, add codes to languages and write each slide\'s translations[code] (title, subtitle, items), then check with render_slide\'s language. Each language can also have its own screenshots (the app\'s UI in that language): set translations[code].shots.device.image (or shots[<device item id>]) to a file path or URL; a language without one shows the primary language\'s, and null goes back to it.'
 
 async function answer(host: Host, req: { id: unknown; method: string; params?: Json }) {
   const ok = (result: unknown) => ({ jsonrpc: '2.0', id: req.id, result })

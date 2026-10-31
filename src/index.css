@@ -461,6 +461,15 @@ label.check:has(input:disabled) { opacity: 0.4; }
 .update-note { position: fixed; right: 16px; bottom: 16px; z-index: 40; display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); box-shadow: 0 8px 24px rgb(0 0 0 / 0.25); font-size: 13px; animation: rise 0.25s var(--ease) both; }
 .msg { white-space: pre-wrap; line-height: 1.45; animation: rise 0.25s var(--ease) both; }
 .msg.user { align-self: flex-end; max-width: 85%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--accent); color: #fff; }
+.shot-lang { color: var(--muted); font-weight: 400; }
+.shot-lang .link { margin-left: 6px; padding: 0; border: 0; background: none; color: var(--accent); font-size: inherit; }
+.md-table { margin: 6px 0; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; white-space: normal; }
+.md-table table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.md-table th, .md-table td { padding: 5px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+.md-table th { background: var(--bg); font-weight: 600; white-space: nowrap; }
+.md-table tr:last-child td { border-bottom: 0; }
+.md-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--bg) 50%, transparent); }
+.msg.assistant code { padding: 1px 4px; border-radius: 4px; background: var(--bg); font-size: 0.9em; }
 .msg.tool { color: var(--muted); font-size: 12px; }
 .msg.tool::before { content: '⚙ '; }
 details.msg.tool::before { content: none; }
@@ -588,3 +597,4 @@ dialog:focus { outline: none; }
 .export h3 { margin: 10px 0 0; }
 .export .row.end { justify-content: flex-end; margin: 8px 0 0; }
 .export .status a { color: var(--accent); word-break: break-all; }
+.settings .switch { display: flex; align-items: center; gap: 8px; font-weight: 500; }

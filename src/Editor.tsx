@@ -206,6 +206,8 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         for (const [l, t] of Object.entries(src.translations ?? {})) {
           const text = isTextPart(part) ? t[part] : t.items?.[part]
           if (text) to = { ...to, ...withText(to, part, text, l) }
+          const shots = t.shots?.[part]
+          if (shots) to = { ...to, ...withShot(to, part, { image: shots.image, outerImage: shots.outerImage }, l) }
         }
         to = { ...to, ...moved(to, to, part, -dx, -dy) }
         src = { ...src, ...removed(src, part) }
@@ -442,7 +444,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
               onEditText={(part, text) => setText(s, part, text)}
               onRotate={(part, deg) => update(s.id, rotated(s, part, deg))}
               onTransfer={(to, dx, dy) => transfer(s.id, to, dx, dy)}
-              onShot={(part, patch) => update(s.id, withShot(s, part, patch))}
+              onShot={(part, patch) => update(s.id, withShot(s, part, patch, textLang))}
             />
             {s.id === sel?.id && (
               <div className="slide-bar" onPointerDown={(e) => e.stopPropagation()}>
@@ -514,6 +516,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
               sel={sel}
               device={selection.length === 1 && isDevice(sel, selection[0].part) && layersOf(sel).includes(selection[0].part) ? selection[0].part : 'device'}
               text={textOf(sel)}
+              lang={textLang}
               placeholder={lang === langs[0] ? undefined : sel}
               setText={(patch) => Object.entries(patch).forEach(([p, t]) => setText(sel, p, t))}
               index={slides.indexOf(sel)}
@@ -535,8 +538,9 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
   )
 }
 
-function SlideInspector({ sel, device, text, placeholder, setText, index, count, update, move, remove }: {
+function SlideInspector({ sel, device, text, lang, placeholder, setText, index, count, update, move, remove }: {
   sel: Slide
+  lang?: string // the language being edited, when not the primary one: screenshots set here are its own
   device: Part // the device the device controls change: the picked one, or the slide's own
   text: Pick<Slide, 'title' | 'subtitle'>
   placeholder?: Pick<Slide, 'title' | 'subtitle'> // the primary language's text, when editing another
@@ -548,7 +552,13 @@ function SlideInspector({ sel, device, text, placeholder, setText, index, count,
   remove: () => void
 }) {
   const shot = shotOf(sel, device), pose = shot.device
-  const setShot = (patch: Partial<Shot>) => update(withShot(sel, device, patch))
+  const setShot = (patch: Partial<Shot>) => update(withShot(sel, device, patch, lang))
+  const own = lang ? sel.translations?.[lang]?.shots?.[device] : undefined // this language's own screenshots
+  const shotLabel = (what: string, has?: HTMLImageElement | null) => (
+    <>{what}{lang && <small className="shot-lang">{has ? ` · ${languageName(lang)} only` : ' · same as primary'}{has && (
+      <button type="button" className="link" onClick={() => setShot({ [what === 'Screenshot' ? 'image' : 'outerImage']: null })}>Use primary</button>
+    )}</small>}</>
+  )
   const setDevice = (patch: Partial<DevicePose>) => setShot({ device: { ...pose, ...patch } })
   const model = DEVICE_BY_ID[pose.model]
   const families = [...new Set(DEVICES.map((d) => d.family))]
@@ -564,7 +574,7 @@ function SlideInspector({ sel, device, text, placeholder, setText, index, count,
         <textarea rows={2} value={text.subtitle} placeholder={placeholder?.subtitle} onChange={(e) => setText({ subtitle: e.target.value })} />
       </label>
       <label>
-        Screenshot
+        {shotLabel('Screenshot', own?.image)}
         <input
           type="file"
           accept="image/*"
@@ -576,7 +586,7 @@ function SlideInspector({ sel, device, text, placeholder, setText, index, count,
       </label>
       {model.outer && (
         <label>
-          Outer screenshot (shown when closed)
+          {shotLabel('Outer screenshot (shown when closed)', own?.outerImage)}
           <input
             type="file"
             accept="image/*"

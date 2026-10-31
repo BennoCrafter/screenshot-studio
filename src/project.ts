@@ -3,7 +3,7 @@
 // on macOS); the browser keeps them in IndexedDB with their screenshots as Blobs.
 
 import { isDesktop } from './native'
-import type { Item, Platform, Slide, Target } from './render'
+import type { Item, Platform, Slide, Target, Translation } from './render'
 
 export interface Project {
   id: string
@@ -34,10 +34,11 @@ export type ProjectSummary = Pick<Project, 'id' | 'name' | 'updated' | 'thumb'> 
 
 /** A project with its screenshots held as `I` (Blobs in IndexedDB, file names on disk, data URLs in a file). */
 type WithImages<I> = Omit<Project, 'targets'> & {
-  targets: (Omit<Target, 'slides'> & { slides: (Omit<Slide, 'image' | 'outerImage' | 'items'> & {
+  targets: (Omit<Target, 'slides'> & { slides: (Omit<Slide, 'image' | 'outerImage' | 'items' | 'translations'> & {
     image: I
     outerImage: I
     items?: (Omit<Item, 'image' | 'outerImage'> & { image?: I; outerImage?: I })[] // images and devices have them
+    translations?: Record<string, Omit<Translation, 'shots'> & { shots?: Record<string, { image?: I; outerImage?: I }> }>
   })[] })[]
 }
 
@@ -54,6 +55,11 @@ const mapImages = async <A, B>(p: WithImages<A>, fn: (a: A) => B | Promise<B>): 
         ...(i.kind === 'image' || i.kind === 'device' ? { image: await fn(image ?? (null as A)) } : {}),
         ...(i.kind === 'device' ? { outerImage: await fn(outerImage ?? (null as A)) } : {}),
       }))),
+      translations: s.translations && Object.fromEntries(await Promise.all(Object.entries(s.translations).map(async ([l, t]) => [l, {
+        ...t,
+        shots: t.shots && Object.fromEntries(await Promise.all(Object.entries(t.shots).map(async ([part, sh]) =>
+          [part, { image: await fn(sh.image ?? (null as A)), outerImage: await fn(sh.outerImage ?? (null as A)) }]))),
+      }]))),
     }))),
   }))),
 })

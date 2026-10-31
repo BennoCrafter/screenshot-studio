@@ -15,8 +15,14 @@ export function shotOf(s: Slide, p: Part): Shot {
   const i = p === 'device' ? undefined : itemOf(s, p)
   return i?.device ? { device: i.device, image: i.image ?? null, outerImage: i.outerImage ?? null } : s
 }
-export const withShot = (s: Slide, p: Part, patch: Partial<Shot>): Partial<Slide> =>
-  p === 'device' ? patch : withItem(s, p, (i) => ({ ...i, ...patch }))
+/** A device element changed; in `lang` (undefined for the primary language) its screenshots are that language's own. */
+export function withShot(s: Slide, p: Part, patch: Partial<Shot>, lang?: string): Partial<Slide> {
+  const { device, ...shots } = patch
+  const shared = p === 'device' ? (lang ? (device ? { device } : {}) : patch) : withItem(s, p, (i) => ({ ...i, ...(lang ? (device ? { device } : {}) : patch) }))
+  if (!lang || !Object.keys(shots).length) return shared
+  const t = s.translations?.[lang] ?? { title: '', subtitle: '' }
+  return { ...shared, translations: { ...s.translations, [lang]: { ...t, shots: { ...t.shots, [p]: { ...t.shots?.[p], ...shots } } } } }
+}
 
 const withItem = (s: Slide, id: Part, fn: (i: Item) => Item): Partial<Slide> =>
   ({ items: s.items?.map((i) => (i.id === id ? fn(i) : i)) })

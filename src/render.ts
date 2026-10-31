@@ -24,7 +24,14 @@ export interface Slide {
   primary?: Pick<Slide, 'title' | 'subtitle'> // set by localize: the text the device is laid out by, so languages never move it
 }
 
-export interface Translation { title: string; subtitle: string; items?: Record<string, string> }
+export interface Translation {
+  title: string
+  subtitle: string
+  items?: Record<string, string> // added texts by item id
+  shots?: Record<Part, LangShot> // screenshots by device part ('device' or an item id)
+}
+/** A device's screenshots in one language; a missing (or null) one shows the primary language's. */
+export interface LangShot { image?: HTMLImageElement | null; outerImage?: HTMLImageElement | null }
 
 /** An element on a slide: 'title', 'subtitle', 'device' or an item's id. The background sits behind them all. */
 export type Part = string
@@ -52,7 +59,7 @@ export interface TextBox { x: number; y: number; scale: number; rotation?: numbe
 export const NO_BOX: TextBox = { x: 0, y: 0, scale: 1 }
 export const layersOf = (s: Pick<Slide, 'layers'>): Part[] => s.layers ?? BUILT_IN_PARTS
 
-/** The slide with `lang`'s text, falling back to the primary language's. */
+/** The slide with `lang`'s text and screenshots, falling back to the primary language's. */
 export function localize(s: Slide, lang?: string): Slide {
   const t = lang ? s.translations?.[lang] : undefined
   return t ? {
@@ -60,7 +67,13 @@ export function localize(s: Slide, lang?: string): Slide {
     primary: { title: s.title, subtitle: s.subtitle },
     title: t.title || s.title,
     subtitle: t.subtitle || s.subtitle,
-    items: s.items?.map((i) => (t.items?.[i.id] ? { ...i, text: t.items[i.id] } : i)),
+    image: t.shots?.device?.image ?? s.image,
+    outerImage: t.shots?.device?.outerImage ?? s.outerImage,
+    items: s.items?.map((i) => ({
+      ...i,
+      ...(t.items?.[i.id] ? { text: t.items[i.id] } : {}),
+      ...(t.shots?.[i.id] ? { image: t.shots[i.id].image ?? i.image, outerImage: t.shots[i.id].outerImage ?? i.outerImage } : {}),
+    })),
   } : s
 }
 

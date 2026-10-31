@@ -3,8 +3,8 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{channel, Sender};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
@@ -17,6 +17,28 @@ use tauri::{AppHandle, Emitter};
 pub const MCP_PORT: u16 = 7457;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+/// Whether other Claude Code sessions (the terminal) may use the server; the app's own chat always can.
+static OTHERS_ALLOWED: AtomicBool = AtomicBool::new(true);
+
+/// A secret made at launch that the app's own chat sends, so it gets through when others are shut out.
+fn chat_token() -> &'static str {
+    static TOKEN: OnceLock<String> = OnceLock::new();
+    TOKEN.get_or_init(|| {
+        use std::hash::{BuildHasher, Hasher};
+        let h = || std::collections::hash_map::RandomState::new().build_hasher().finish();
+        format!("{:016x}{:016x}", h(), h())
+    })
+}
+
+#[tauri::command]
+fn mcp_chat_token() -> String {
+    chat_token().into()
+}
+
+#[tauri::command]
+fn mcp_allow_others(on: bool) {
+    OTHERS_ALLOWED.store(on, Ordering::Relaxed);
+}
 static PENDING: Mutex<Option<HashMap<u64, Sender<String>>>> = Mutex::new(None);
 
 #[derive(Clone, serde::Serialize)]
@@ -49,7 +71,7 @@ fn handle(app: &AppHandle, mut stream: TcpStream) {
     let mut parts = line.split_whitespace();
     let (method, path) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
 
-    let (mut length, mut origin) = (0usize, false);
+    let (mut length, mut origin, mut ours) = (0usize, false, false);
     loop {
         let mut h = String::new();
         if reader.read_line(&mut h).unwrap_or(0) == 0 || h.trim().is_empty() {
@@ -59,6 +81,7 @@ fn handle(app: &AppHandle, mut stream: TcpStream) {
         match name.trim().to_ascii_lowercase().as_str() {
             "content-length" => length = value.trim().parse().unwrap_or(0),
             "origin" => origin = true,
+            "authorization" => ours = value.trim() == format!("Bearer {}", chat_token()),
             _ => {}
         }
     }
@@ -66,6 +89,9 @@ fn handle(app: &AppHandle, mut stream: TcpStream) {
     // Browsers always send Origin; Claude Code doesn't. Refusing it keeps web pages out.
     if origin {
         return reply(&mut stream, "403 Forbidden", "");
+    }
+    if !ours && !OTHERS_ALLOWED.load(Ordering::Relaxed) {
+        return reply(&mut stream, "403 Forbidden", r#"{"error":"Screenshot Studio is set not to accept other Claude Code sessions (Settings)."}"#);
     }
     if path.split('?').next() != Some("/mcp") {
         return reply(&mut stream, "404 Not Found", "");
@@ -242,7 +268,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![mcp_respond, claude_chat, claude_stop, claude_mcp_added, open_url, gh])
+        .invoke_handler(tauri::generate_handler![mcp_respond, claude_chat, claude_stop, claude_mcp_added, open_url, gh, mcp_chat_token, mcp_allow_others])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
