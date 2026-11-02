@@ -52,7 +52,7 @@ export default function App() {
   }, [])
 
   return <>
-    <Settings />
+    <Settings project={project} setProject={(fn) => setProject((p) => p && fn(p))} />
     {!project ? (
     <StartPage onOpen={(id) => openProject(id).then(show)} onCreate={show} />
   ) : (

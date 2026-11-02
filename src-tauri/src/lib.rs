@@ -6,6 +6,7 @@ use std::sync::mpsc::{channel, Sender};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
+use tauri::menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
 use tauri::{AppHandle, Emitter};
 
 // ---- MCP bridge -------------------------------------------------------------------
@@ -277,8 +278,19 @@ pub fn run() {
                         .build(),
                 )?;
             }
+            let menu = Menu::default(app.handle())?;
+            if let Some(MenuItemKind::Submenu(first)) = menu.items()?.into_iter().next() {
+                first.insert(&PredefinedMenuItem::separator(app)?, 2)?;
+                first.insert(&MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?, 2)?;
+            }
+            app.set_menu(menu)?;
             serve_mcp(app.handle().clone());
             Ok(())
+        })
+        .on_menu_event(|app, e| {
+            if e.id() == "settings" {
+                let _ = app.emit("open-settings", ());
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
