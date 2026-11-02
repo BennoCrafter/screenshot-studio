@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { MCP_URL } from './agent'
 import { isDesktop } from './native'
+import type { Project } from './project'
+import { PLATFORMS, SIZES, type SizeName } from './render'
 
 type Appearance = 'system' | 'light' | 'dark'
 
@@ -57,8 +59,8 @@ const installUpdate = async (u: Update) => {
   await (await import('@tauri-apps/plugin-process')).relaunch()
 }
 
-/** App settings, opened with ⌘, or a gear button. */
-export function Settings() {
+/** App settings, opened with ⌘, or from the app menu; with a project open, its export sizes too. */
+export function Settings({ project, setProject }: { project: Project | null; setProject: (fn: (p: Project) => Project) => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [appearance, setAppearance] = useState(stored)
   const [linked, setLinked] = useState<boolean | null>(null)
@@ -111,7 +113,8 @@ export function Settings() {
     }
     window.addEventListener('keydown', onKey)
     window.addEventListener('open-settings', open)
-    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('open-settings', open) }
+    const off = isDesktop ? import('@tauri-apps/api/event').then(({ listen }) => listen('open-settings', open)) : null // the app menu's Settings…
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('open-settings', open); off?.then((f) => f()) }
   }, [])
 
   const pick = (a: Appearance) => {
@@ -141,6 +144,23 @@ export function Settings() {
           <span key={a} className={appearance === a ? 'on' : ''}><button onClick={() => pick(a)}>{a[0].toUpperCase() + a.slice(1)}</button></span>
         ))}
       </nav>
+
+      {project && (
+        <>
+          <h3>Export size</h3>
+          <p className="hint">The pixel size this project's PNGs are exported at. The App Store asks for one of these per device class; the first is the one it requires.</p>
+          {project.targets.map((t) => (
+            <label key={t.platform}>
+              {PLATFORMS[t.platform].label}
+              <select value={t.size} onChange={(e) => setProject((p) => ({ ...p, targets: p.targets.map((x) => (x.platform === t.platform ? { ...x, size: e.target.value as SizeName } : x)) }))}>
+                {PLATFORMS[t.platform].sizes.map((n) => (
+                  <option key={n} value={n}>{n} · {SIZES[n][0]}×{SIZES[n][1]}</option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </>
+      )}
 
       {isDesktop && (
         <>

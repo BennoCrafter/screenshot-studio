@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ask, isDesktop, saveFiles } from './native'
-import { languageName, languagesOf, type Project } from './project'
+import { ask, isDesktop, saveFile, saveFiles } from './native'
+import { languageName, languagesOf, PROJECT_FILE, projectToFile, type Project } from './project'
 import { localize, PLATFORMS, renderSlide, SIZES } from './render'
 import { openLink } from './Settings'
 import { loadCustom, saveCustom, shareTemplate, toData, type Template } from './templates'
@@ -14,12 +14,12 @@ const storedFolders = (): Folders => {
   try { return (localStorage.getItem('export-folders') as Folders | null) ?? 'none' } catch { return 'none' }
 }
 
-/** The Export button and its dialog: PNGs of the picked slides, platforms and languages, or the project as a template. */
+/** The Export button and its dialog: PNGs of the picked slides, platforms and languages, the project as a template, or as a .ssproj file. */
 export function Export({ project }: { project: Project }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [open, setOpen] = useState(false)
   const [thumbs, setThumbs] = useState<Record<string, string>>({}) // slide id → small preview
-  const [kind, setKind] = useState<'png' | 'template'>('png')
+  const [kind, setKind] = useState<'png' | 'template' | 'file'>('png')
   const [skip, setSkip] = useState(new Set<string>()) // slide ids and language codes left out
   const [busy, setBusy] = useState(false)
   const [name, setName] = useState('')
@@ -126,6 +126,7 @@ export function Export({ project }: { project: Project }) {
         <nav className="platform-tabs">
           <span className={kind === 'png' ? 'on' : ''}><button onClick={() => setKind('png')}>PNG images</button></span>
           <span className={kind === 'template' ? 'on' : ''}><button onClick={() => setKind('template')}>Template</button></span>
+          <span className={kind === 'file' ? 'on' : ''}><button onClick={() => setKind('file')}>Project file</button></span>
         </nav>
 
         {kind === 'png' ? (
@@ -193,11 +194,18 @@ export function Export({ project }: { project: Project }) {
                 {count
                   ? `${slideCount} slide${slideCount === 1 ? '' : 's'}${picked.length > 1 ? ` × ${picked.length} languages` : ''} = ${count} PNG${count === 1 ? '' : 's'}`
                   : 'Pick at least one slide and language'}
-                <small>Each platform exports at its size from the top bar.</small>
+                <small>Each platform exports at its size from Settings.</small>
               </span>
               )}
               <button className="primary" disabled={busy || !count} onClick={exportPngs}>{busy ? 'Exporting…' : `Export ${count} PNG${count === 1 ? '' : 's'}`}</button>
             </footer>
+          </>
+        ) : kind === 'file' ? (
+          <>
+            <p className="hint">Saves the whole project, screenshots included, to a .ssproj file you can open again or send to someone.</p>
+            <div className="row end">
+              <button className="primary" onClick={async () => saveFile(`${project.name}.ssproj`, await projectToFile(project), PROJECT_FILE)}>Save File…</button>
+            </div>
           </>
         ) : (
           <>

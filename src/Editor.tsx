@@ -6,10 +6,10 @@ import { Chat } from './Chat'
 import { Themes } from './Themes'
 import { openSettings } from './Settings'
 import { animate } from './motion'
-import { ask, isDesktop, saveFile } from './native'
-import { LANGUAGES, languageName, languagesOf, loadImage, PROJECT_FILE, projectToFile, type Project } from './project'
+import { ask, isDesktop } from './native'
+import { LANGUAGES, languageName, languagesOf, loadImage, type Project } from './project'
 import { added, isDevice, isText, isTextPart, itemOf, missingBuiltIns, moved, newItem, partName, removed, reset, resized, restack, rotated, shotOf, withShot, withText, type Shot } from './elements'
-import { layersOf, localize, PLATFORMS, SIZES, type Item, type Part, type Platform, type SizeName, type Slide, type Style, type Target } from './render'
+import { layersOf, localize, PLATFORMS, SIZES, type Item, type Part, type Platform, type Slide, type Style, type Target } from './render'
 import { SlideCanvas } from './SlideCanvas'
 import { Export } from './Export'
 import { adaptTarget, ALL_PLATFORMS, poseFor } from './templates'
@@ -68,7 +68,6 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
   const setTarget = (fn: (t: Target) => Target) =>
     setProject((p) => ({ ...p, targets: p.targets.map((t) => (t.platform === target.platform ? fn(t) : t)) }))
   const setSlides = (fn: (s: Slide[]) => Slide[]) => setTarget((t) => ({ ...t, slides: fn(t.slides) }))
-  const setSizeName = (size: SizeName) => setTarget((t) => ({ ...t, size }))
 
   const showTarget = (i: number) =>
     animate(() => {
@@ -303,8 +302,6 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     setSlides(() => next)
   }
 
-  const saveToFile = async () => saveFile(`${project.name}.ssproj`, await projectToFile(project), PROJECT_FILE)
-
   return (
     <div className="app" style={{ '--side-w': `${sideW}px`, '--tools-w': `${toolsW}px` } as React.CSSProperties}>
       <header className="topbar" data-tauri-drag-region>
@@ -332,17 +329,8 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
           )}
         </nav>
         <Themes current={sel ?? slides[0]} title={localize(sel ?? slides[0], lang).title.split('\n')[0] || 'Your app'} onApply={applyTheme} />
-        <label title="The pixel size the PNGs are exported at. The App Store asks for one of these per device class; the first is the one it requires.">
-          Export size
-          <select value={target.size} onChange={(e) => setSizeName(e.target.value as SizeName)}>
-            {PLATFORMS[target.platform].sizes.map((n) => (
-              <option key={n} value={n}>{n} · {SIZES[n][0]}×{SIZES[n][1]}</option>
-            ))}
-          </select>
-        </label>
         <span className="spacer" />
-        <button onClick={openSettings} title="Settings (⌘,)" aria-label="Settings"><Icon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></button>
-        <button onClick={saveToFile} title="Save the project, screenshots included, to a .ssproj file">Save File…</button>
+        {!isDesktop && <button onClick={openSettings} title="Settings (⌘,)" aria-label="Settings"><Icon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></button>}
         <button onClick={addSlide}>Add slide</button>
         <Export project={project} />
       </header>
