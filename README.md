@@ -27,18 +27,27 @@
 - **Languages**: add App Store localizations (German, English, Japanese and so on) to a project. Each language has its own headline, subtitle and texts, and can have its own screenshots (a language without one shows the primary language's). Everything else (devices, colours, layout) is shared, so a change shows up in every language.
 - **Export** PNGs of the slides and languages you pick. The desktop app writes them all to a folder you pick.
 - **Project files** (`.ssproj`): one JSON file with the screenshots inside, for backup or sharing.
-- **Claude built in** (desktop): a chat panel that runs your installed Claude Code. Claude can see and change everything in the open project while you watch. It can also search the web for images (icons, logos, photos) and download them onto slides. Click any tool call in the chat to see what it sent and what came back.
+- **AI agent built in** (desktop): a chat panel that runs an AI agent connected to the app. It can see and change everything in the open project while you watch. It can also search the web for images (icons, logos, photos) and download them onto slides. Click any tool call in the chat to see what it sent and what came back.
 - **Images and SVGs**: PNG, JPEG, WebP and SVG work as screenshots and as images on slides. SVGs stay sharp at any export size.
 
-## Claude and MCP
+## MCP
 
-The desktop app runs an MCP server at `http://127.0.0.1:7457/mcp` while it's open. Its tools work on the live project: `get_state`, `update_project`, `render_slide` (Claude sees the slide as it exports), `export_pngs`, `create_project`, `open_project`, `close_project` and `delete_project`.
+The desktop app runs an MCP server (streamable HTTP) at `http://127.0.0.1:7457/mcp` while it's open, so any MCP client can work on the live project: Claude Code, Codex, Gemini CLI, Cursor, VS Code and others. Its tools: `get_state`, `update_project`, `render_slide` (the agent sees the slide as it exports), `export_pngs`, `create_project`, `open_project`, `close_project` and `delete_project`.
 
-- **In the app**: open the **Claude** tab next to the Inspector in the editor sidebar. This needs [Claude Code](https://claude.com/claude-code) installed and logged in, because the panel runs `claude -p` through your login shell.
-- **From any Claude Code session**: connect it once, then ask it to work on your screenshots:
+- **In the app**: open the **Agent** tab next to the Inspector in the editor sidebar. For now the panel runs [Claude Code](https://claude.com/claude-code) (`claude -p`) through your login shell, so that needs to be installed and logged in.
+- **From any MCP client**: connect it once (Settings shows these too), then ask it to work on your screenshots:
 
   ```sh
-  claude mcp add --transport http screenshot-studio http://127.0.0.1:7457/mcp
+  claude mcp add --scope user --transport http screenshot-studio http://127.0.0.1:7457/mcp
+  codex mcp add screenshot-studio --url http://127.0.0.1:7457/mcp
+  gemini mcp add --scope user --transport http screenshot-studio http://127.0.0.1:7457/mcp
+  code --add-mcp '{"name":"screenshot-studio","type":"http","url":"http://127.0.0.1:7457/mcp"}'
+  ```
+
+  Clients configured by JSON (Cursor's `~/.cursor/mcp.json`, Windsurf, Zed…) take this entry:
+
+  ```json
+  { "mcpServers": { "screenshot-studio": { "type": "http", "url": "http://127.0.0.1:7457/mcp" } } }
   ```
 
 The server only listens on localhost and refuses requests from web pages (any request with an `Origin` header). Its tools can read screenshots from, and export PNGs to, anything under your home folder, `/tmp` and `/Volumes`.
@@ -83,9 +92,9 @@ src/
   project.ts         storage, plus .ssproj import and export
   native.ts          where browser and desktop differ: dialogs, saving and opening files
   agent.ts           MCP tools, answering requests the Rust side forwards
-  Chat.tsx           the Claude chat, a tab of the editor sidebar
+  Chat.tsx           the agent chat, a tab of the editor sidebar
   motion.ts          animated view transitions
-src-tauri/           Tauri desktop shell; src/lib.rs has the MCP HTTP server and runs `claude`
+src-tauri/           Tauri desktop shell; src/lib.rs has the MCP HTTP server and runs the agent CLI
 ```
 
 ## License

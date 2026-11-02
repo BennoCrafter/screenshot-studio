@@ -438,7 +438,7 @@ label.check:has(input:disabled) { opacity: 0.4; }
   .recents { border-left: none; border-top: 1px solid var(--border); max-height: none; }
 }
 
-/* chat with Claude (desktop), a tab of the sidebar */
+/* chat with the agent (desktop), a tab of the sidebar */
 .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
 .chat.dropping::after { content: 'Drop images to attach'; position: absolute; inset: 8px; display: grid; place-items: center; border: 2px dashed var(--accent); border-radius: 12px; background: color-mix(in srgb, var(--panel) 85%, transparent); color: var(--accent); font-weight: 600; pointer-events: none; }
 .chat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 0; }

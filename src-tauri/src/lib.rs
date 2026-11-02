@@ -9,7 +9,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
 // ---- MCP bridge -------------------------------------------------------------------
-// A local MCP server (streamable HTTP, JSON responses) so Claude Code can drive the app.
+// A local MCP server (streamable HTTP, JSON responses) so any MCP client can drive the app.
 // Rust is only the transport: each JSON-RPC request goes to the webview, which owns the
 // project state and answers it (src/agent.ts).
 
@@ -17,7 +17,7 @@ use tauri::{AppHandle, Emitter};
 pub const MCP_PORT: u16 = 7457;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-/// Whether other Claude Code sessions (the terminal) may use the server; the app's own chat always can.
+/// Whether other MCP clients (terminal agents, editors) may use the server; the app's own chat always can.
 static OTHERS_ALLOWED: AtomicBool = AtomicBool::new(true);
 
 /// A secret made at launch that the app's own chat sends, so it gets through when others are shut out.
@@ -86,12 +86,12 @@ fn handle(app: &AppHandle, mut stream: TcpStream) {
         }
     }
 
-    // Browsers always send Origin; Claude Code doesn't. Refusing it keeps web pages out.
+    // Browsers always send Origin; MCP clients don't. Refusing it keeps web pages out.
     if origin {
         return reply(&mut stream, "403 Forbidden", "");
     }
     if !ours && !OTHERS_ALLOWED.load(Ordering::Relaxed) {
-        return reply(&mut stream, "403 Forbidden", r#"{"error":"Screenshot Studio is set not to accept other Claude Code sessions (Settings)."}"#);
+        return reply(&mut stream, "403 Forbidden", r#"{"error":"Screenshot Studio is set not to accept other MCP clients (Settings)."}"#);
     }
     if path.split('?').next() != Some("/mcp") {
         return reply(&mut stream, "404 Not Found", "");
@@ -140,7 +140,7 @@ fn serve_mcp(app: AppHandle) {
     });
 }
 
-// ---- chat: runs the user's Claude Code, connected to the bridge -------------------
+// ---- chat: runs the user's agent CLI, connected to the bridge ---------------------
 
 static CHAT: Mutex<Option<Child>> = Mutex::new(None);
 
@@ -166,10 +166,10 @@ fn cli(program: &'static str) -> Command {
 }
 const NOT_INSTALLED: &str = "Claude Code wasn't found. Install it from https://claude.com/claude-code";
 
-/// Runs `claude -p` and streams its stream-json lines as `claude-line` events; resolves when it exits.
+/// Runs the agent (`claude -p` for now) and streams its stream-json lines as `agent-line` events; resolves when it exits.
 #[tauri::command]
-async fn claude_chat(app: AppHandle, args: Vec<String>) -> Result<(), String> {
-    claude_stop();
+async fn agent_chat(app: AppHandle, args: Vec<String>) -> Result<(), String> {
+    agent_stop();
     let mut child = cli("claude")
         .args(args)
         .stdin(Stdio::null())
@@ -188,7 +188,7 @@ async fn claude_chat(app: AppHandle, args: Vec<String>) -> Result<(), String> {
     });
     tauri::async_runtime::spawn_blocking(move || {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            let _ = app.emit("claude-line", line);
+            let _ = app.emit("agent-line", line);
         }
     })
     .await
@@ -254,7 +254,7 @@ async fn gh(args: Vec<String>, input: Option<String>) -> Result<String, String> 
 }
 
 #[tauri::command]
-fn claude_stop() {
+fn agent_stop() {
     if let Some(mut c) = CHAT.lock().unwrap().take() {
         let _ = c.kill();
     }
@@ -268,7 +268,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![mcp_respond, claude_chat, claude_stop, claude_mcp_added, open_url, gh, mcp_chat_token, mcp_allow_others])
+        .invoke_handler(tauri::generate_handler![mcp_respond, agent_chat, agent_stop, claude_mcp_added, open_url, gh, mcp_chat_token, mcp_allow_others])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

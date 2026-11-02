@@ -1,5 +1,5 @@
-// The MCP server's brain. src-tauri forwards each JSON-RPC request from Claude Code (or any
-// MCP client) to here; the tools read and change the live project, so edits show up at once.
+// The MCP server's brain. src-tauri forwards each JSON-RPC request from any MCP client
+// to here; the tools read and change the live project, so edits show up at once.
 
 import { DEVICES, DEVICE_BY_ID } from './devices/models'
 import { deleteProject, LANGUAGES, languagesOf, listProjects, loadImage, typeOfName, type Project } from './project'
@@ -19,7 +19,7 @@ export interface Host {
 
 type Json = Record<string, unknown>
 
-/** A tool call Claude wants to make that needs the user's OK; the chat shows it and resolves it. */
+/** A tool call the agent wants to make that needs the user's OK; the chat shows it and resolves it. */
 export interface Approval { tool: string; input: Json; resolve: (ok: boolean) => void }
 let askUser: ((a: Approval) => void) | null = null
 export const onApproval = (fn: typeof askUser) => (askUser = fn)
@@ -334,7 +334,7 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
     },
   },
   {
-    // Claude Code calls this itself (--permission-prompt-tool) before a tool that needs permission.
+    // The in-app agent calls this itself (--permission-prompt-tool) before a tool that needs permission.
     name: 'approve',
     description: 'Internal: the app uses this to ask the user for permission. Never call it yourself.',
     inputSchema: { type: 'object', properties: { tool_name: { type: 'string' }, input: { type: 'object' }, tool_use_id: { type: 'string' } }, required: ['tool_name', 'input'] },

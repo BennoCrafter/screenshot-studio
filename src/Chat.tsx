@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { APPROVE_TOOL, MCP_URL, onApproval, type Approval } from './agent'
 import { extOfType } from './project'
-import { claudeLinked, openSettings } from './Settings'
+import { openSettings } from './Settings'
 
-// Chat with Claude Code, run as `claude -p` by the desktop app and connected to this app's
-// MCP server, so it can change the project while you watch.
+// Chat with an AI agent, run by the desktop app (currently the `claude` CLI) and connected to this
+// app's MCP server, so it can change the project while you watch.
 
 type Item = { role: 'user' | 'assistant' | 'tool' | 'error'; text: string; images?: string[]; id?: string; input?: string; result?: string; failed?: boolean }
 type Attachment = { blob: Blob; url: string }
 
 const SYSTEM = 'You are the assistant inside Screenshot Studio, a desktop app for App Store screenshots. Use the screenshot-studio tools to look at and change what the user sees: call get_state first, edit with update_project, and check your work with render_slide. To translate, add language codes to the project\'s languages and fill each slide\'s translations; write natural, short store copy rather than word-for-word. Images the user attaches are listed as file paths: look at them with Read, and put them on slides by giving the path as a slide\'s image. You can also find images on the web (WebSearch, WebFetch) and give their URL instead of a path; the app downloads it. Screenshots can differ per language: when the user gives screenshots for a language (say German UI), put them in that slide\'s translations[code].shots.device.image instead of image, which is the primary language\'s and the fallback for every other language. Keep replies short.'
 
-// Claude Code's permission modes. Anything a mode doesn't allow on its own comes to the chat for Allow / Deny.
+// The agent's permission modes. Anything a mode doesn't allow on its own comes to the chat for Allow / Deny.
 const MODES = { manual: 'Ask every time', acceptEdits: 'Auto-accept edits', auto: 'Auto', bypassPermissions: 'Allow everything' }
 const MODELS = { '': 'Default model', fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku' }
 const EFFORTS = { '': 'Default effort', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' }
@@ -24,7 +24,7 @@ const inline = (s: string) => s.split(/(\*\*[^*]+\*\*|`[^`]+`)/).map((p, i) =>
 const cells = (line: string) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
 const SEPARATOR = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/ // |---|:---:|
 
-/** Claude's text, with Markdown tables drawn as tables. */
+/** The agent's text, with Markdown tables drawn as tables. */
 function Rich({ text }: { text: string }) {
   const lines = text.split('\n'), out: ReactNode[] = []
   let para: string[] = []
@@ -58,7 +58,7 @@ function Rich({ text }: { text: string }) {
   return out
 }
 
-/** What Claude can do here, in the user's words. */
+/** What the agent can do here, in the user's words. */
 const CAN = [
   ['Build slides', 'Write headlines, pick devices and lay out new slides'],
   ['Restyle', 'Apply a theme, or design and save a new one'],
@@ -80,7 +80,7 @@ function useStored<T extends string>(key: string, initial: T) {
   return [v, setV] as const
 }
 
-/** Writes attachments into the app data folder, so `claude` can read them by path. */
+/** Writes attachments into the app data folder, so the agent can read them by path. */
 async function saveAttachments(files: Attachment[]) {
   const { BaseDirectory, mkdir, writeFile } = await import('@tauri-apps/plugin-fs')
   const { appDataDir, join } = await import('@tauri-apps/api/path')
@@ -103,7 +103,6 @@ export function Chat({ hidden }: { hidden: boolean }) {
   const [model, setModel] = useStored<keyof typeof MODELS>('chat-model', '')
   const [effort, setEffort] = useStored<keyof typeof EFFORTS>('chat-effort', '')
   const [asks, setAsks] = useState<Approval[]>([])
-  const [linked, setLinked] = useState<boolean | null>(null)
   const session = useRef<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
   const picker = useRef<HTMLInputElement>(null)
@@ -112,13 +111,6 @@ export function Chat({ hidden }: { hidden: boolean }) {
   useEffect(() => {
     list.current?.scrollTo(0, list.current.scrollHeight)
   }, [items, asks])
-
-  // re-checked each time the tab opens, so running the command and coming back updates it
-  useEffect(() => {
-    if (hidden) return
-    setLinked(null)
-    claudeLinked().then((l) => setLinked(l ?? false))
-  }, [hidden])
 
   useEffect(() => {
     onApproval((a) => setAsks((all) => [...all, a]))
@@ -136,11 +128,11 @@ export function Chat({ hidden }: { hidden: boolean }) {
     add({ role: 'tool', text: `${ok ? 'Allowed' : 'Denied'} ${a.tool}: ${summary(a)}` })
   }
 
-  // stream-json lines from the running `claude`
+  // stream-json lines from the running agent
   useEffect(() => {
     let off: (() => void) | undefined
     import('@tauri-apps/api/event').then(({ listen }) =>
-      listen<string>('claude-line', ({ payload }) => {
+      listen<string>('agent-line', ({ payload }) => {
         let ev
         try {
           ev = JSON.parse(payload)
@@ -196,9 +188,9 @@ export function Chat({ hidden }: { hidden: boolean }) {
         ...(effort ? ['--effort', effort] : []),
         ...(session.current ? ['--resume', session.current] : []),
       ]
-      await invoke('claude_chat', { args })
+      await invoke('agent_chat', { args })
     } catch (e) {
-      add({ role: 'error', text: String(e) || 'Claude Code stopped.' })
+      add({ role: 'error', text: String(e) || 'The agent stopped.' })
     }
     setBusy(false)
   }
@@ -206,10 +198,8 @@ export function Chat({ hidden }: { hidden: boolean }) {
   const stop = async () => {
     asks.forEach((a) => a.resolve(false))
     setAsks([])
-    await (await import('@tauri-apps/api/core')).invoke('claude_stop')
+    await (await import('@tauri-apps/api/core')).invoke('agent_stop')
   }
-
-  const status = linked === null ? ['checking', 'Checking Claude Code…'] : linked ? ['ok', 'Claude Code connected'] : ['off', 'Terminal not connected']
 
   return (
     <div
@@ -220,8 +210,8 @@ export function Chat({ hidden }: { hidden: boolean }) {
       onDrop={(e) => { e.preventDefault(); setOver(false); attach(e.dataTransfer.files) }}
     >
       <header className="chat-head">
-        <button className={`chat-status ${status[0]}`} onClick={openSettings} title={linked ? 'Terminal Claude Code sessions can use this app too' : 'The Claude tab works either way. Open Settings to connect terminal sessions.'}>
-          <i />{status[1]}
+        <button className="chat-status" onClick={openSettings} title="Any MCP client (Claude Code, Codex, Cursor…) can use this app too. Open Settings to connect one.">
+          <i />Connect other MCP clients
         </button>
         <button onClick={() => { session.current = null; setItems([]) }} disabled={busy || !items.length} title="Start a new conversation">New chat</button>
       </header>
@@ -229,7 +219,7 @@ export function Chat({ hidden }: { hidden: boolean }) {
       <div className="chat-list" ref={list}>
         {items.length === 0 && (
           <div className="chat-empty">
-            <h3>What can Claude do?</h3>
+            <h3>What can the agent do?</h3>
             <ul className="can">
               {CAN.map(([t, d]) => <li key={t}><b>{t}</b><span>{d}</span></li>)}
             </ul>
@@ -253,7 +243,7 @@ export function Chat({ hidden }: { hidden: boolean }) {
         ))}
         {asks.map((a, i) => (
           <div key={i} className="msg ask">
-            <b>Claude wants to use {a.tool}</b>
+            <b>The agent wants to use {a.tool}</b>
             <code>{summary(a)}</code>
             <div className="row">
               <button onClick={() => decide(a, false)}>Deny</button>
@@ -279,7 +269,7 @@ export function Chat({ hidden }: { hidden: boolean }) {
           <textarea
             rows={3}
             value={input}
-            placeholder="Message Claude… drop or paste images here"
+            placeholder="Message the agent… drop or paste images here"
             onChange={(e) => setInput(e.target.value)}
             onPaste={(e) => {
               const imgs = [...e.clipboardData.files].filter((f) => f.type.startsWith('image/'))
@@ -300,10 +290,10 @@ export function Chat({ hidden }: { hidden: boolean }) {
             <select value={model} onChange={(e) => setModel(e.target.value as keyof typeof MODELS)} disabled={busy} title="Model">
               {Object.entries(MODELS).map(([m, label]) => <option key={m} value={m}>{label}</option>)}
             </select>
-            <select value={effort} onChange={(e) => setEffort(e.target.value as keyof typeof EFFORTS)} disabled={busy} title="How hard Claude thinks">
+            <select value={effort} onChange={(e) => setEffort(e.target.value as keyof typeof EFFORTS)} disabled={busy} title="How hard the agent thinks">
               {Object.entries(EFFORTS).map(([m, label]) => <option key={m} value={m}>{label}</option>)}
             </select>
-            <select value={mode} onChange={(e) => setMode(e.target.value as keyof typeof MODES)} disabled={busy} title="What Claude may do without asking">
+            <select value={mode} onChange={(e) => setMode(e.target.value as keyof typeof MODES)} disabled={busy} title="What the agent may do without asking">
               {Object.entries(MODES).map(([m, label]) => <option key={m} value={m}>{label}</option>)}
             </select>
             <span className="spacer" />

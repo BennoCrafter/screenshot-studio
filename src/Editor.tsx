@@ -506,7 +506,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         {isDesktop && (
           <nav className="platform-tabs side-tabs">
             <span className={tab === 'inspector' ? 'on' : ''}><button onClick={() => setTab('inspector')}>Inspector</button></span>
-            <span className={tab === 'chat' ? 'on' : ''}><button onClick={() => setTab('chat')}>Claude</button></span>
+            <span className={tab === 'chat' ? 'on' : ''}><button onClick={() => setTab('chat')}>Agent</button></span>
           </nav>
         )}
         <div className="inspector" hidden={tab !== 'inspector'}>

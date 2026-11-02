@@ -4,7 +4,15 @@ import { isDesktop } from './native'
 
 type Appearance = 'system' | 'light' | 'dark'
 
-export const ADD_COMMAND = `claude mcp add --scope user --transport http screenshot-studio ${MCP_URL}`
+/** How to add the server to each MCP client; any client that speaks streamable HTTP works. */
+const CLIENTS = {
+  'Claude Code': `claude mcp add --scope user --transport http screenshot-studio ${MCP_URL}`,
+  Codex: `codex mcp add screenshot-studio --url ${MCP_URL}`,
+  'Gemini CLI': `gemini mcp add --scope user --transport http screenshot-studio ${MCP_URL}`,
+  'VS Code': `code --add-mcp '${JSON.stringify({ name: 'screenshot-studio', type: 'http', url: MCP_URL })}'`,
+  'Other (JSON)': JSON.stringify({ mcpServers: { 'screenshot-studio': { type: 'http', url: MCP_URL } } }, null, 2),
+}
+type Client = keyof typeof CLIENTS
 
 const stored = (): Appearance => {
   try { return (localStorage.getItem('appearance') as Appearance) || 'system' } catch { return 'system' }
@@ -31,7 +39,7 @@ export const openLink = async (url: string) => {
   await (await import('@tauri-apps/api/core')).invoke('open_url', { url })
 }
 
-/** Whether terminal Claude Code sessions may use the app's MCP server (the app's own chat always can). */
+/** Whether other MCP clients (terminal agents, editors) may use the app's MCP server (the app's own chat always can). */
 const storedOthers = () => {
   try { return localStorage.getItem('mcp-others') !== 'off' } catch { return true }
 }
@@ -61,6 +69,8 @@ export function Settings() {
     applyMcpAccess(on)
   }
   const [copied, setCopied] = useState(false)
+  const [client, setClient] = useState<Client>('Claude Code')
+  const command = CLIENTS[client]
   const [version, setVersion] = useState('')
   const [update, setUpdate] = useState<Update | null>(null)
   const [updating, setUpdating] = useState<'checking' | 'latest' | 'installing' | 'failed' | null>(null)
@@ -134,28 +144,35 @@ export function Settings() {
 
       {isDesktop && (
         <>
-          <h3>Claude Code</h3>
+          <h3>MCP server</h3>
           <label className="switch">
             <input type="checkbox" checked={others} onChange={(e) => allowOthers(e.target.checked)} />
-            Let terminal Claude Code sessions use Screenshot Studio
+            Let other MCP clients use Screenshot Studio
           </label>
           <p className="hint">
             {others
-              ? 'Any Claude Code session on this Mac that has the server added can see and change your open project.'
-              : 'Off: the MCP server only answers the Claude tab in this app. Terminal sessions get refused.'}
+              ? 'Any MCP client on this Mac that has the server added (Claude Code, Codex, Gemini CLI, Cursor, VS Code…) can see and change your open project.'
+              : 'Off: the MCP server only answers the Agent tab in this app. Other clients get refused.'}
           </p>
           {others && (<>
-          <p className={`status ${linked ? 'ok' : ''}`}>
-            {linked === null ? 'Checking…' : linked ? '● Connected: terminal sessions can use Screenshot Studio.' : '○ Not connected to terminal sessions. The Claude tab works either way.'}
-          </p>
-          {!linked && (
+          <nav className="platform-tabs">
+            {(Object.keys(CLIENTS) as Client[]).map((c) => (
+              <span key={c} className={client === c ? 'on' : ''}><button onClick={() => setClient(c)}>{c}</button></span>
+            ))}
+          </nav>
+          {client === 'Claude Code' && (
+            <p className={`status ${linked ? 'ok' : ''}`}>
+              {linked === null ? 'Checking…' : linked ? '● Connected: terminal sessions can use Screenshot Studio.' : '○ Not connected to terminal sessions. The Agent tab works either way.'}
+            </p>
+          )}
+          {!(client === 'Claude Code' && linked) && (
             <>
-              <p className="hint">Run this once in a terminal to let every Claude Code session see and edit your screenshots while the app is open:</p>
+              <p className="hint">{client === 'Other (JSON)' ? 'Add this to your client\'s MCP config (Cursor: ~/.cursor/mcp.json, Windsurf, Zed and others take the same server entry):' : 'Run this once in a terminal to let it see and edit your screenshots while the app is open:'}</p>
               <div className="row">
-                <code>{ADD_COMMAND}</code>
-                <button onClick={() => { navigator.clipboard.writeText(ADD_COMMAND); setCopied(true); setTimeout(() => setCopied(false), 1500) }}>{copied ? 'Copied' : 'Copy'}</button>
+                <code style={{ whiteSpace: 'pre-wrap' }}>{command}</code>
+                <button onClick={() => { navigator.clipboard.writeText(command); setCopied(true); setTimeout(() => setCopied(false), 1500) }}>{copied ? 'Copied' : 'Copy'}</button>
               </div>
-              <button onClick={() => claudeLinked().then(setLinked)}>Check again</button>
+              {client === 'Claude Code' && <button onClick={() => claudeLinked().then(setLinked)}>Check again</button>}
             </>
           )}
           <p className="hint">Server address: {MCP_URL}</p>

@@ -36,7 +36,7 @@ export default function App() {
     history.replaceState(null, '', p ? `#${p.id}` : location.pathname)
   }
 
-  // the MCP server: Claude Code drives the same state the UI shows
+  // the MCP server: an MCP client drives the same state the UI shows
   useEffect(() => {
     if (!isDesktop) return
     const off = serveAgent({

@@ -18,7 +18,7 @@ export function Themes({ current, title, onApply }: { current: Style; title: str
   const dialog = useRef<HTMLDialogElement>(null)
   const [themes, setThemes] = useState<Theme[]>([])
   const [draft, setDraft] = useState<Theme | null>(null)
-  const reload = () => loadThemes().then(setThemes) // on every open, so themes Claude saved show up
+  const reload = () => loadThemes().then(setThemes) // on every open, so themes an agent saved show up
 
   const pick = (t: Style) => {
     onApply(t)
