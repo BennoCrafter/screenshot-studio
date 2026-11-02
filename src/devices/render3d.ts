@@ -299,9 +299,12 @@ export function renderDevice(
     b.halves[1].rotation.y = -swing
     follow = swing * (1 - pose.fold / 180)
   }
-  // roll(Z) · pitch(X) · yaw(Y), the order open-screenshot-generator composes in
   if (b.base) b.base.rotation.x = ((pose.fold - 90) * PI) / 180
-  b.root.rotation.set((pose.pitch * PI) / 180, (pose.yaw * PI) / 180 + follow, ((pose.roll ?? 0) * PI) / 180, 'ZXY')
+  // Spin in the picture plane first, then turn and tilt about the screen's axes, so a spun
+  // (e.g. landscape) device still turns the way the pointer drags; `follow` is about its own hinge.
+  b.root.quaternion
+    .setFromEuler(new THREE.Euler((pose.pitch * PI) / 180, (pose.yaw * PI) / 180, ((pose.roll ?? 0) * PI) / 180, 'XYZ'))
+    .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), follow))
 
   // Camera far back for mild perspective, then an off-centre frustum fitted to every vertex.
   const dist = Math.max(m.width, m.height) * 6
