@@ -732,9 +732,9 @@ dialog:focus { outline: none; }
 
 /* on/off switch: a checkbox drawn as a sliding pill */
 input[type='checkbox'].switch { width: 34px; height: 20px; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--muted) 35%, transparent); display: block; position: relative; transition: background-color 0.2s; }
-input[type='checkbox'].switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.3); transform: none; transition: translate 0.2s var(--ease); }
+input[type='checkbox'].switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.3); transform: none; transition: transform 0.2s var(--ease); }
 input[type='checkbox'].switch:checked { background: #34c759; }
-input[type='checkbox'].switch:checked::after { translate: 14px 0; transform: none; }
+input[type='checkbox'].switch:checked::after { transform: translateX(14px); }
 
 /* export dialog */
 .export { height: min(640px, calc(100vh - 48px)); } /* one size for every tab */
