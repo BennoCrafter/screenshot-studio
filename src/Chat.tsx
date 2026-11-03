@@ -4,7 +4,7 @@ import { APPROVE_TOOL, onApproval, type Approval } from './tools'
 import { extOfType } from './project'
 import { IMAGE_FILES, openFiles } from './native'
 import { claudeLinked, openSettings, storedOthers } from './Settings'
-import { EFFORTS, MODELS, MODES, useStored } from './prefs'
+import { effortName, MODES, modelOf, useModels, useStored } from './prefs'
 
 // Chat with an AI agent, run by the desktop app (currently the `claude` CLI) and connected to this
 // app's MCP server, so it can change the project while you watch.
@@ -91,9 +91,13 @@ export function Chat({ hidden }: { hidden: boolean }) {
   const [over, setOver] = useState(false)
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useStored<keyof typeof MODES>('chat-mode', 'manual')
-  const [model, setModel] = useStored<keyof typeof MODELS>('chat-model', '')
-  const [effort, setEffort] = useStored<keyof typeof EFFORTS>('chat-effort', '')
+  const [model, setModel] = useStored<string>('chat-model', '')
+  const [effort, setEffort] = useStored<string>('chat-effort', '')
+  const models = useModels()
+  const picked = modelOf(models, model)
+  const efforts = picked?.supportedEffortLevels ?? [] // none: the model doesn't take an effort
   const [asks, setAsks] = useState<Approval[]>([])
+  const [picker, setPicker] = useState<{ x: number; y: number; view: 'models' | 'more' | 'effort' } | null>(null) // the model menu, above its button
   const session = useRef<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
   const add = (it: Item) => setItems((all) => [...all, it])
@@ -174,8 +178,8 @@ export function Chat({ hidden }: { hidden: boolean }) {
         '--permission-mode', mode,
         '--permission-prompt-tool', APPROVE_TOOL,
         '--append-system-prompt', SYSTEM,
-        ...(model ? ['--model', model] : []),
-        ...(effort ? ['--effort', effort] : []),
+        ...(model && model !== 'default' ? ['--model', model] : []),
+        ...(effort && efforts.includes(effort) ? ['--effort', effort] : []),
         ...(session.current ? ['--resume', session.current] : []),
       ]
       await invoke('agent_chat', { args })
@@ -213,7 +217,7 @@ export function Chat({ hidden }: { hidden: boolean }) {
       onDrop={(e) => { e.preventDefault(); setOver(false); attach(e.dataTransfer.files) }}
     >
       <header className="chat-head">
-        <button className={`chat-status ${mcp === 'linked' ? 'ok' : mcp}`} onClick={openSettings} title={{
+        <button className={`chat-status ${mcp === 'linked' ? 'ok' : mcp}`} onClick={() => openSettings('agent')} title={{
           off: 'Only this app\'s agent can use it. Turn on other MCP clients in Settings.',
           checking: 'Checking…',
           linked: 'Claude Code in the terminal can see and change your project. Other clients connect in Settings.',
@@ -294,12 +298,12 @@ export function Chat({ hidden }: { hidden: boolean }) {
             <button type="button" className="icon" title="Attach images" onClick={async () => attach(await openFiles(IMAGE_FILES, true))}>
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 12.5l-8.5 8.5a5 5 0 0 1-7-7L14 5.5a3.3 3.3 0 0 1 4.7 4.7L10.2 18.7a1.7 1.7 0 0 1-2.4-2.4L15.5 8.6" /></svg>
             </button>
-            <select value={model} onChange={(e) => setModel(e.target.value as keyof typeof MODELS)} disabled={busy} title="Model">
-              {Object.entries(MODELS).map(([m, label]) => <option key={m} value={m}>{label}</option>)}
-            </select>
-            <select value={effort} onChange={(e) => setEffort(e.target.value as keyof typeof EFFORTS)} disabled={busy} title="How hard the agent thinks">
-              {Object.entries(EFFORTS).map(([m, label]) => <option key={m} value={m}>{label}</option>)}
-            </select>
+            <button type="button" className="model-pick" disabled={busy} title="Model and effort" onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              setPicker({ x: r.left, y: r.top, view: 'models' })
+            }}>
+              {picked?.displayName ?? (model || 'Default model')}{effort && efforts.includes(effort) && <span>{effortName(effort)}</span>}
+            </button>
             <select value={mode} onChange={(e) => setMode(e.target.value as keyof typeof MODES)} disabled={busy} title="What the agent may do without asking">
               {Object.entries(MODES).map(([m, label]) => <option key={m} value={m}>{label}</option>)}
             </select>
@@ -310,6 +314,44 @@ export function Chat({ hidden }: { hidden: boolean }) {
           </div>
         </div>
       </form>
+      {picker && (
+        <div className="menu-backdrop" onPointerDown={() => setPicker(null)}>
+          <div className="menu model-menu" ref={(el) => {
+            if (!el) return
+            const r = el.getBoundingClientRect()
+            el.style.left = `${Math.max(8, Math.min(picker.x, innerWidth - r.width - 8))}px`
+            el.style.top = `${Math.max(8, picker.y - r.height - 6)}px`
+          }} onPointerDown={(e) => e.stopPropagation()}>
+            {picker.view === 'effort' ? (
+              <>
+                <button onClick={() => setPicker({ ...picker, view: 'models' })}>‹ Effort</button>
+                <hr />
+                {['', ...efforts].map((k) => (
+                  <button key={k} onClick={() => { setEffort(k); setPicker(null) }}>{effortName(k)}{k === effort && <i>✓</i>}</button>
+                ))}
+              </>
+            ) : (
+              <>
+                {picker.view === 'more' && <><button onClick={() => setPicker({ ...picker, view: 'models' })}>‹ More models</button><hr /></>}
+                {/* Claude Code's aliases (default, opus, …) up front, pinned versions under More models */}
+                {models.filter((m) => m.value.startsWith('claude-') === (picker.view === 'more')).map((m) => (
+                  <button key={m.value} onClick={() => { setModel(m.value); setPicker(null) }}>
+                    <span>{m.displayName}<small>{m.description}</small></span>{m === picked && <i>✓</i>}
+                  </button>
+                ))}
+                {!models.length && <button disabled>Loading models…</button>}
+                {picker.view === 'models' && (
+                  <>
+                    <hr />
+                    {!!efforts.length && <button onClick={() => setPicker({ ...picker, view: 'effort' })}>Effort<small>{effortName(effort)} ›</small></button>}
+                    {models.some((m) => m.value.startsWith('claude-')) && <button onClick={() => setPicker({ ...picker, view: 'more' })}>More models<small>›</small></button>}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

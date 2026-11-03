@@ -209,6 +209,34 @@ async fn agent_chat(app: AppHandle, args: Vec<String>) -> Result<(), String> {
     }
 }
 
+/// The models the installed Claude Code offers (name, description, effort levels), from its initialize handshake.
+#[tauri::command]
+async fn agent_models() -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut child = cli("claude")
+            .args(["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| if e.kind() == std::io::ErrorKind::NotFound { NOT_INSTALLED.into() } else { e.to_string() })?;
+        // stdin stays open until the answer is in, or it would start a turn with no prompt
+        let mut stdin = child.stdin.take().unwrap();
+        writeln!(stdin, r#"{{"type":"control_request","request_id":"models","request":{{"subtype":"initialize"}}}}"#).map_err(|e| e.to_string())?;
+        let models = BufReader::new(child.stdout.take().unwrap())
+            .lines()
+            .map_while(Result::ok)
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(&l).ok())
+            .find(|v| v["type"] == "control_response")
+            .map(|v| v["response"]["response"]["models"].clone());
+        let _ = child.kill();
+        let _ = child.wait();
+        models.filter(|m| m.is_array()).ok_or_else(|| "Claude Code didn't list its models".into())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Whether the terminal Claude Code has this app's MCP server added (user scope, so any directory).
 #[tauri::command]
 async fn claude_mcp_added() -> bool {
@@ -290,7 +318,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![mcp_respond, agent_chat, agent_stop, claude_mcp_added, open_url, gh, mcp_chat_token, mcp_allow_others, take_opened_files])
+        .invoke_handler(tauri::generate_handler![mcp_respond, agent_chat, agent_models, agent_stop, claude_mcp_added, open_url, gh, mcp_chat_token, mcp_allow_others, take_opened_files])
         .setup(|app| {
             let menu = Menu::default(app.handle())?;
             if let Some(MenuItemKind::Submenu(first)) = menu.items()?.into_iter().next() {

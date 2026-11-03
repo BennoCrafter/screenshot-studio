@@ -577,6 +577,15 @@ details.msg.tool pre { max-height: 220px; overflow: auto; margin: 6px 0 0; paddi
 .composer-bar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .composer-bar select { min-width: 0; max-width: 120px; padding: 3px 6px; font-size: 11.5px; border-color: transparent; background: none; color: var(--muted); }
 .composer-bar select:hover:not(:disabled) { border-color: var(--border); color: var(--text); }
+.model-pick { padding: 3px 8px; font-size: 11.5px; border-color: transparent; background: none; }
+.model-pick span { margin-left: 5px; color: var(--muted); }
+.model-pick:hover:not(:disabled) { border-color: var(--border); }
+.model-menu { min-width: 250px; }
+.model-menu button { align-items: center; padding: 6px 10px; }
+.model-menu button > span { display: flex; flex-direction: column; gap: 1px; }
+.model-menu small { font-size: 11.5px; opacity: 0.65; }
+.model-menu i { font-style: normal; color: var(--accent); }
+.model-menu button:hover i { color: inherit; }
 .composer-bar .icon { display: grid; place-items: center; padding: 4px; border-color: transparent; background: none; color: var(--muted); }
 .composer-bar .icon:hover { color: var(--text); }
 .composer-bar .primary { padding: 4px 14px; }

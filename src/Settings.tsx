@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { MCP_URL } from './agent'
 import { isDesktop } from './native'
-import { EFFORTS, MODELS, MODES, useStored } from './prefs'
+import { effortName, MODES, modelOf, useModels, useStored } from './prefs'
 import type { Project } from './project'
 import { PLATFORMS, SIZES, type SizeName } from './render'
 
@@ -51,7 +51,8 @@ export async function applyMcpAccess(on = storedOthers()) {
   if (isDesktop) await (await import('@tauri-apps/api/core')).invoke('mcp_allow_others', { on }).catch(() => {})
 }
 
-export const openSettings = () => window.dispatchEvent(new Event('open-settings'))
+/** Opens Settings, at `section` if given (e.g. 'agent'). */
+export const openSettings = (section?: string) => window.dispatchEvent(new CustomEvent('open-settings', { detail: section }))
 
 type Update = import('@tauri-apps/plugin-updater').Update
 /** A newer release on GitHub, or null; throws when it can't tell. */
@@ -80,6 +81,7 @@ export function Settings({ project, setProject }: { project: Project | null; set
   const [update, setUpdate] = useState<Update | null>(null)
   const [updating, setUpdating] = useState<'checking' | 'latest' | 'installing' | 'failed' | null>(null)
   const [nudge, setNudge] = useState(false) // the launch check found one
+  const [section, setSection] = useState('general')
 
   const checkUpdate = async () => {
     setUpdating('checking')
@@ -105,7 +107,9 @@ export function Settings({ project, setProject }: { project: Project | null; set
   }, [])
 
   useEffect(() => {
-    const open = () => {
+    const open = (e?: Event) => {
+      const at = e instanceof CustomEvent && e.detail
+      if (at) setSection(at)
       if (dialog.current!.open) return
       claudeLinked().then(setLinked)
       dialog.current!.showModal()
@@ -116,7 +120,7 @@ export function Settings({ project, setProject }: { project: Project | null; set
     }
     window.addEventListener('keydown', onKey)
     window.addEventListener('open-settings', open)
-    const off = isDesktop ? import('@tauri-apps/api/event').then(({ listen }) => listen('open-settings', open)) : null // the app menu's Settings…
+    const off = isDesktop ? import('@tauri-apps/api/event').then(({ listen }) => listen('open-settings', () => open())) : null // the app menu's Settings…
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('open-settings', open); off?.then((f) => f()) }
   }, [])
 
@@ -126,9 +130,10 @@ export function Settings({ project, setProject }: { project: Project | null; set
     applyAppearance(a)
   }
   const [mode, setMode] = useStored<keyof typeof MODES>('chat-mode', 'manual')
-  const [model, setModel] = useStored<keyof typeof MODELS>('chat-model', '')
-  const [effort, setEffort] = useStored<keyof typeof EFFORTS>('chat-effort', '')
-  const [section, setSection] = useState('general')
+  const [model, setModel] = useStored<string>('chat-model', '')
+  const [effort, setEffort] = useStored<string>('chat-effort', '')
+  const models = useModels()
+  const efforts = modelOf(models, model)?.supportedEffortLevels ?? []
   const [query, setQuery] = useState('')
 
   const segmented = <T extends string>(value: T, options: readonly T[], set: (v: T) => void) => (
@@ -158,8 +163,8 @@ export function Settings({ project, setProject }: { project: Project | null; set
     ] }] : []),
     ...(isDesktop ? [{ id: 'agent', label: 'Agent', icon: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', groups: [
       { title: 'Agent tab', hint: 'The assistant in the sidebar. The same choices sit under its message field.', rows: [
-        { title: 'Model', keys: 'ai claude model fable opus sonnet haiku', ui: menu(model, MODELS, setModel) },
-        { title: 'Effort', hint: 'How hard it thinks before answering.', keys: 'ai thinking effort reasoning', ui: menu(effort, EFFORTS, setEffort) },
+        { title: 'Model', keys: 'ai claude model fable opus sonnet haiku', ui: menu(model || 'default', Object.fromEntries(models.map((m) => [m.value, m.displayName])), setModel) },
+        { title: 'Effort', hint: 'How hard it thinks before answering.', keys: 'ai thinking effort reasoning', ui: menu(effort, Object.fromEntries(['', ...efforts].map((e) => [e, effortName(e)])), setEffort) },
         { title: 'Permissions', hint: 'What it may do without asking. Anything else asks in the chat.', keys: 'ai permission mode allow ask approve', ui: menu(mode, MODES, setMode) },
       ] },
       { title: 'Other MCP clients', hint: `Terminal agents and editors (Claude Code, Codex, Gemini CLI, Cursor, VS Code…) can drive the app through its MCP server at ${MCP_URL}.`, rows: [
