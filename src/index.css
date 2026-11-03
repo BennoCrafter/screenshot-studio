@@ -206,7 +206,7 @@ body { margin: 0; }
   flex-direction: column;
   gap: 14px;
 }
-.inspector { flex: 1; min-height: 0; padding: 16px; overflow-y: auto; }
+.inspector { flex: 1; min-height: 0; padding: 16px; overflow-y: auto; scrollbar-gutter: stable; } /* a scrollbar coming and going mustn't resize the content */
 .inspector-body { animation: rise 0.25s var(--ease) both;
 }
 .inspector h2 { margin: 0; font-size: 15px; }
@@ -250,6 +250,7 @@ label {
   min-height: 0;
   padding: 16px;
   overflow: hidden auto;
+  scrollbar-gutter: stable;
   background: var(--panel);
   border-right: 1px solid var(--border);
   position: relative;
@@ -427,7 +428,7 @@ button.danger { color: var(--danger); }
 }
 .tpl-meta { display: flex; flex-direction: column; }
 .tpl-meta small { color: var(--muted); font-size: 11px; }
-.tpl-delete { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; padding: 0; border-radius: 50%; }
+.tpl-delete {position: absolute; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border-radius: 50%; }
 
 /* project bar */
 .project-name { width: 160px; font-weight: 600; background: transparent; border-color: transparent; }

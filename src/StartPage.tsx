@@ -69,7 +69,8 @@ export function StartPage({ onOpen, onCreate }: { onOpen: (id: string) => void; 
                   setRecent((r) => r!.filter((x) => x.id !== p.id))
                 }}
               >
-                ×
+                {/* an svg, not "×": the glyph sits off-center in the round button */}
+                <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M1 1l8 8M9 1l-8 8" /></svg>
               </button>
             </li>
           ))}
