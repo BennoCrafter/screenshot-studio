@@ -4,7 +4,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && t.matches('input, textarea, select, [contenteditable]')
 
 /**
- * An infinite board: Ctrl/⌘ + scroll or a trackpad pinch zooms at the cursor, scroll pans,
+ * An infinite board: Ctrl/⌘ + scroll or a trackpad pinch zooms at the cursor, scroll pans (Shift + scroll sideways),
  * Ctrl/⌘-drag, Space-drag, middle-drag or dragging empty space pans. ⌘/Ctrl + = − 0 zoom in, out and fit.
  * Children get `--z` (the zoom) so handles can stay the same size on screen.
  */
@@ -38,6 +38,8 @@ export function Board({ children, fitKey, onEmptyClick }: { children: ReactNode;
       e.preventDefault()
       const r = s.getBoundingClientRect()
       if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-clamp(e.deltaY, -30, 30) * 0.01), e.clientX - r.left, e.clientY - r.top) // one wheel notch ≈ 1.35×, pinches stay smooth
+      // Shift + a plain mouse wheel pans sideways (macOS already swaps the axes; elsewhere it may not)
+      else if (e.shiftKey && !e.deltaX) setView((v) => ({ ...v, x: v.x - e.deltaY }))
       else setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }))
     }
     const onKey = (e: KeyboardEvent) => {
