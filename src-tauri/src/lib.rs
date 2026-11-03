@@ -132,7 +132,7 @@ fn serve_mcp(app: AppHandle) {
     std::thread::spawn(move || {
         let listener = match TcpListener::bind(("127.0.0.1", MCP_PORT)) {
             Ok(l) => l,
-            Err(e) => return eprintln!("MCP server not started on port {MCP_PORT}: {e}"),
+            Err(e) => return log::error!("MCP server not started on port {MCP_PORT}: {e}"),
         };
         for stream in listener.incoming().flatten() {
             let app = app.clone();
@@ -197,6 +197,9 @@ async fn agent_chat(app: AppHandle, args: Vec<String>) -> Result<(), String> {
 
     let status = CHAT.lock().unwrap().take().and_then(|mut c| c.wait().ok());
     let errors = errors.join().unwrap_or_default();
+    if !errors.is_empty() {
+        log::warn!("agent stderr: {errors}");
+    }
     match status {
         Some(s) if !s.success() => Err(match s.code() {
             Some(127) => NOT_INSTALLED.into(),
@@ -280,6 +283,8 @@ fn take_opened_files() -> Vec<String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // stdout + ~/Library/Logs/<identifier>/ (or the platform's log dir); the frontend logs here too
+        .plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).max_file_size(5_000_000).build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -287,13 +292,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![mcp_respond, agent_chat, agent_stop, claude_mcp_added, open_url, gh, mcp_chat_token, mcp_allow_others, take_opened_files])
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
             let menu = Menu::default(app.handle())?;
             if let Some(MenuItemKind::Submenu(first)) = menu.items()?.into_iter().next() {
                 first.insert(&PredefinedMenuItem::separator(app)?, 2)?;

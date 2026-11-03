@@ -20,6 +20,7 @@
     "fs:allow-mkdir",
     "core:event:default",
     "updater:default",
+    "log:default",
     "process:allow-restart",
     {
       "identifier": "http:default",

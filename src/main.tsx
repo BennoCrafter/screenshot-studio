@@ -11,6 +11,16 @@ if (isDesktop && navigator.userAgent.includes('Mac')) document.documentElement.c
 applyAppearance()
 applyMcpAccess()
 
+// on desktop, warnings, errors and crashes also go to the app's log file (see tauri-plugin-log in lib.rs)
+if (isDesktop) import('@tauri-apps/plugin-log').then(({ warn, error }) => {
+  const text = (args: unknown[]) => args.map((a) => a instanceof Error ? a.stack ?? a.message : typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
+  const { warn: cw, error: ce } = console
+  console.warn = (...a) => { cw(...a); warn(text(a)).catch(() => {}) }
+  console.error = (...a) => { ce(...a); error(text(a)).catch(() => {}) }
+  window.addEventListener('error', (e) => console.error('uncaught', e.error ?? e.message))
+  window.addEventListener('unhandledrejection', (e) => console.error('unhandled rejection', e.reason))
+})
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

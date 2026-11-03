@@ -86,17 +86,17 @@ export function Settings({ project, setProject }: { project: Project | null; set
       const u = await findUpdate()
       setUpdate(u)
       setUpdating(u ? null : 'latest')
-    } catch { setUpdating('failed') }
+    } catch (e) { console.error('update check failed', e); setUpdating('failed') }
   }
   const install = async () => {
     if (!update) return
     setUpdating('installing')
-    try { await installUpdate(update) } catch { setUpdating('failed') }
+    try { await installUpdate(update) } catch (e) { console.error('update install failed', e); setUpdating('failed') }
   }
 
   // check once on launch; a new version shows a small note until dismissed
   useEffect(() => {
-    if (isDesktop && !import.meta.env.DEV) findUpdate().then((u) => { setUpdate(u); setNudge(!!u) }, () => {})
+    if (isDesktop && !import.meta.env.DEV) findUpdate().then((u) => { setUpdate(u); setNudge(!!u) }, (e) => console.warn('launch update check failed', e))
   }, [])
 
   useEffect(() => {
