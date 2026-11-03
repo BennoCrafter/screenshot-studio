@@ -261,6 +261,22 @@ fn agent_stop() {
     }
 }
 
+// ---- project files opened from Finder / Explorer ------------------------------------
+
+/// Contents of .ssproj files the OS asked us to open, until the webview takes them.
+static OPENED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn opened(app: &AppHandle, paths: impl IntoIterator<Item = std::path::PathBuf>) {
+    let texts = paths.into_iter().filter(|p| p.extension().is_some_and(|e| e == "ssproj")).filter_map(|p| std::fs::read_to_string(p).ok());
+    OPENED.lock().unwrap().extend(texts);
+    let _ = app.emit("files-opened", ());
+}
+
+#[tauri::command]
+fn take_opened_files() -> Vec<String> {
+    std::mem::take(&mut OPENED.lock().unwrap())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -269,7 +285,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![mcp_respond, agent_chat, agent_stop, claude_mcp_added, open_url, gh, mcp_chat_token, mcp_allow_others])
+        .invoke_handler(tauri::generate_handler![mcp_respond, agent_chat, agent_stop, claude_mcp_added, open_url, gh, mcp_chat_token, mcp_allow_others, take_opened_files])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -285,6 +301,8 @@ pub fn run() {
             }
             app.set_menu(menu)?;
             serve_mcp(app.handle().clone());
+            // Windows and Linux pass the opened file as an argument; macOS sends RunEvent::Opened
+            opened(app.handle(), std::env::args_os().skip(1).map(Into::into));
             Ok(())
         })
         .on_menu_event(|app, e| {
@@ -292,6 +310,12 @@ pub fn run() {
                 let _ = app.emit("open-settings", ());
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while building tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _e| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _e {
+                opened(_app, urls.into_iter().filter_map(|u| u.to_file_path().ok()));
+            }
+        });
 }

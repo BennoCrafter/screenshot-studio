@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { serveAgent } from './agent'
 import { Editor } from './Editor'
 import { animate } from './motion'
-import { isDesktop } from './native'
-import { openProject, saveProject, thumbnail, type Project } from './project'
+import { isDesktop, tell } from './native'
+import { openProject, projectFromFile, saveProject, thumbnail, type Project } from './project'
 import { Settings } from './Settings'
 import { StartPage } from './StartPage'
 
@@ -48,6 +48,27 @@ export default function App() {
         show(null)
       },
     })
+    return () => void off.then((f) => f())
+  }, [])
+
+  // .ssproj files opened from Finder / Explorer (double-click, Open With)
+  useEffect(() => {
+    if (!isDesktop) return
+    const take = async () => {
+      const { invoke } = await import('@tauri-apps/api/core')
+      for (const text of await invoke<string[]>('take_opened_files')) {
+        try {
+          const p = await projectFromFile(text)
+          await saveProject(p)
+          if (latest.current) await save(latest.current)
+          show(p)
+        } catch {
+          await tell('That file isn\'t a Screenshot Studio project.')
+        }
+      }
+    }
+    take()
+    const off = import('@tauri-apps/api/event').then(({ listen }) => listen('files-opened', take))
     return () => void off.then((f) => f())
   }, [])
 

@@ -35,6 +35,9 @@
     "active": true,
     "targets": ["app", "dmg", "appimage", "deb", "nsis"],
     "createUpdaterArtifacts": true,
+    "fileAssociations": [
+      { "ext": ["ssproj"], "name": "Screenshot Studio project", "description": "Screenshot Studio project", "role": "Editor", "mimeType": "application/json" }
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
