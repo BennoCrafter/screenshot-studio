@@ -410,7 +410,8 @@ button.danger { color: var(--danger); }
 .tpl-dialog .hint { margin: 4px 0 0; }
 .tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; margin-top: 12px; }
 .tpl-card { position: relative; display: flex; flex-direction: column; gap: 6px; }
-.tpl-preview { display: flex; gap: 4px; height: 120px; padding: 6px; border-radius: 10px; }
+.tpl-preview { display: flex; justify-content: center; gap: 4px; height: 120px; padding: 6px; border-radius: 10px; }
+.tpl-preview canvas { flex: 0 1 auto; min-width: 0; height: 100%; object-fit: contain; border-radius: 5px; }
 .tpl-preview { transition: border-color 0.15s, translate 0.2s var(--ease), box-shadow 0.2s; }
 .tpl-preview:hover { border-color: var(--accent); translate: 0 -2px; box-shadow: 0 6px 16px rgb(0 0 0 / 0.12); }
 .tpl-preview span {

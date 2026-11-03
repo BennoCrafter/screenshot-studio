@@ -1,8 +1,46 @@
-import { useEffect, useState } from 'react'
-import { layersOf, PLATFORMS, type Platform } from './render'
-import { loadCustom, saveCustom, type Template } from './templates'
+import { useEffect, useRef, useState } from 'react'
+import { loadImage } from './project'
+import { drawSlide, layersOf, PLATFORMS, sizeOf, type Platform, type Slide } from './render'
+import { loadCustom, saveCustom, toTarget, type Template, type TargetData } from './templates'
+import macShot from './builtin/fillers/mac.jpg'
 
-/** A template tile: its first slides as color swatches, plus name and platforms. */
+// filler screenshots, so a preview's devices show an app instead of a blank screen (credits in builtin/fillers/)
+const PHONE_SHOTS = Object.values(import.meta.glob<string>('./builtin/fillers/phone-*.jpg', { eager: true, query: '?url', import: 'default' }))
+const load = (urls: string[]) => Promise.all(urls.map(async (u) => loadImage(await (await fetch(u)).blob())))
+let fillers: Promise<{ phone: HTMLImageElement[]; mac: HTMLImageElement[] }> | undefined
+const getFillers = () => (fillers ??= Promise.all([load(PHONE_SHOTS), load([macShot])]).then(([phone, mac]) => ({ phone, mac })))
+
+/** The template's first slides drawn small, its own screenshots or fillers in the devices; color swatches until they're ready. */
+function Preview({ data, count }: { data: TargetData; count: number }) {
+  const [slides, setSlides] = useState<Slide[]>()
+  useEffect(() => {
+    let live = true
+    Promise.all([toTarget({ ...data, slides: data.slides.slice(0, count) }), getFillers()]).then(([t, f]) => {
+      const pool = data.platform === 'mac' ? f.mac : f.phone
+      if (live) setSlides(t.slides.map((s, i) => ({ ...s, image: s.image ?? pool[i % pool.length], outerImage: s.outerImage ?? pool[i % pool.length] })))
+    })
+    return () => { live = false }
+  }, [data, count])
+  if (slides) return slides.map((s, i) => <Thumb key={i} s={s} size={sizeOf(data)} />)
+  return data.slides.slice(0, count).map((s, i) => (
+    <span key={i} style={{ background: `linear-gradient(${s.angle}deg, ${s.bg1}, ${s.bg2})`, color: s.textColor }}>
+      {layersOf(s).map((p) => s.items?.find((i) => i.id === p && i.kind === 'text')?.text).find(Boolean)}
+    </span>
+  ))
+}
+
+function Thumb({ s, size: [w, h] }: { s: Slide; size: readonly [number, number] }) {
+  const ref = useRef<HTMLCanvasElement>(null)
+  useEffect(() => {
+    const c = ref.current!
+    c.height = 240 // about twice the card's height, for sharp Retina thumbnails
+    c.width = Math.round((w / h) * c.height)
+    drawSlide(c.getContext('2d')!, s, c.width, c.height)
+  }, [s, w, h])
+  return <canvas ref={ref} />
+}
+
+/** A template tile: its first slides as previews, plus name, platforms and who made it. */
 export function TemplateCard({ t, platform, selected, onPick, onDelete }: {
   t: Template
   platform?: Platform
@@ -15,11 +53,7 @@ export function TemplateCard({ t, platform, selected, onPick, onDelete }: {
   return (
     <div className={selected ? 'tpl-card selected' : 'tpl-card'}>
       <button className={wide ? 'tpl-preview wide' : 'tpl-preview'} onClick={onPick}>
-        {shown.slides.slice(0, wide ? 2 : 4).map((s, i) => (
-          <span key={i} style={{ background: `linear-gradient(${s.angle}deg, ${s.bg1}, ${s.bg2})`, color: s.textColor }}>
-            {layersOf(s).map((p) => s.items?.find((i) => i.id === p && i.kind === 'text')?.text).find(Boolean)}
-          </span>
-        ))}
+        <Preview data={shown} count={wide ? 2 : 4} />
       </button>
       <div className="tpl-meta">
         <strong>{t.name}</strong>
