@@ -6,8 +6,8 @@ import { Chat } from './Chat'
 import { Themes } from './Themes'
 import { openSettings } from './Settings'
 import { animate } from './motion'
-import { ask, isDesktop, tell } from './native'
-import { FONT_TYPES, fontFamily, fontFrom, IMAGE_TYPES, LANGUAGES, languageName, languagesOf, loadImage, type Project, type ProjectFont } from './project'
+import { ask, FONT_FILES, IMAGE_FILES, isDesktop, openFiles, tell } from './native'
+import { fontFamily, fontFrom, LANGUAGES, languageName, languagesOf, loadImage, type Project, type ProjectFont } from './project'
 import { added, isDevice, isText, itemOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotOf, withShot, withText, type Shot } from './elements'
 import { FONT, FONTS, layersOf, localize, PLATFORMS, SIZES, type Item, type Part, type Platform, type Slide, type Style, type Target } from './render'
 import { SlideCanvas } from './SlideCanvas'
@@ -45,7 +45,6 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
   const [sideW, setSideW] = useWidth('side-w', 300)
   const [toolsW, setToolsW] = useWidth('tools-w', 220)
   const [dragged, setDragged] = useState<number | null>(null)
-  const imageInput = useRef<HTMLInputElement>(null)
   const [ti, setTi] = useState(0)
   const target = project.targets[Math.min(ti, project.targets.length - 1)]
   const slides = target.slides
@@ -358,17 +357,13 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         <h3>Add</h3>
         <div className="add-grid">
           <button onClick={() => insert(() => newItem('text'))}><Icon d="M5 6V4h14v2M12 4v16M9 20h6" />Text</button>
-          <button onClick={() => imageInput.current!.click()}><Icon d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9.5h.01" />Image</button>
+          <button onClick={async () => {
+            const [f] = await openFiles(IMAGE_FILES)
+            if (f) { const img = await loadImage(f); insert(() => newItem('image', img)) }
+          }}><Icon d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9.5h.01" />Image</button>
           <button onClick={insertDevice}><Icon d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM11 18h2" />Device</button>
           <button onClick={() => insert(() => newItem('rect'))}><Icon d="M4 6h16v12H4z" />Rectangle</button>
           <button onClick={() => insert(() => newItem('ellipse'))}><Icon d="M12 5c4.4 0 8 3.1 8 7s-3.6 7-8 7-8-3.1-8-7 3.6-7 8-7z" />Ellipse</button>
-          <input ref={imageInput} type="file" accept={IMAGE_TYPES} hidden onChange={async (e) => {
-            const f = e.target.files?.[0]
-            e.target.value = ''
-            if (!f) return
-            const img = await loadImage(f)
-            insert(() => newItem('image', img))
-          }} />
         </div>
 
         <h3>Slides <span>{slides.length}</span></h3>
@@ -597,7 +592,6 @@ function TextInspector({ item, sel, lang, fonts, addFont, fontForAll, set, setTe
   setText: (text: string) => void
 }) {
   const weight = item.weight ?? 600, font = item.font ?? FONT
-  const fontInput = useRef<HTMLInputElement>(null)
   const known = [...fonts.map((f) => fontFamily(f.name)), ...Object.values(FONTS)]
   return (
     <>
@@ -607,14 +601,21 @@ function TextInspector({ item, sel, lang, fonts, addFont, fontForAll, set, setTe
         <textarea rows={3} value={lang ? sel.translations?.[lang]?.items?.[item.id] ?? '' : item.text ?? ''} placeholder={lang ? item.text : undefined}
           onChange={(e) => setText(e.target.value)} />
       </label>
-      {/* a button, not a menu entry: WebKit opens a file picker only from a click */}
       <div className="field">
         <div className="field-head">
           Font
           <span>
             <button type="button" className="link" title="Use this font for every text in the project" onClick={() => fontForAll(font)}>Apply to all</button>
             {' · '}
-            <button type="button" className="link" onClick={() => fontInput.current!.click()}>Add font…</button>
+            <button type="button" className="link" onClick={async () => {
+              const [f] = await openFiles(FONT_FILES)
+              if (!f) return
+              try {
+                set({ font: fontFamily((await addFont(f)).name) })
+              } catch (err) {
+                tell((err as Error).message)
+              }
+            }}>Add font…</button>
           </span>
         </div>
         <select aria-label="Font" value={font} style={{ fontFamily: font }} onChange={(e) => set({ font: e.target.value })}>
@@ -628,16 +629,6 @@ function TextInspector({ item, sel, lang, fonts, addFont, fontForAll, set, setTe
             {Object.entries(FONTS).map(([name, f]) => <option key={name} value={f} style={{ fontFamily: f }}>{name}</option>)}
           </optgroup>
         </select>
-        <input ref={fontInput} type="file" accept={FONT_TYPES} hidden onChange={async (e) => {
-          const f = e.target.files?.[0]
-          e.target.value = ''
-          if (!f) return
-          try {
-            set({ font: fontFamily((await addFont(f)).name) })
-          } catch (err) {
-            tell((err as Error).message)
-          }
-        }} />
       </div>
       <div className="row">
         <label>
@@ -732,18 +723,15 @@ function DeviceInspector({ sel, device, lang, update }: { sel: Slide; device: Pa
 
 /** A screenshot slot: shows the one set (it survives reloads, unlike a file input's name) and opens a picker for another. */
 function ShotPicker({ label, image, set }: { label: React.ReactNode; image: HTMLImageElement | null; set: (img: HTMLImageElement) => void }) {
-  const input = useRef<HTMLInputElement>(null)
   return (
     <label>
       {label}
-      <button type="button" className="shot-picker" onClick={() => input.current!.click()}>
+      <button type="button" className="shot-picker" onClick={async () => {
+        const [f] = await openFiles(IMAGE_FILES)
+        if (f) set(await loadImage(f))
+      }}>
         {image ? <><img src={image.src} alt="" />Replace…</> : 'Choose image…'}
       </button>
-      <input ref={input} type="file" accept={IMAGE_TYPES} hidden onChange={async (e) => {
-        const f = e.target.files?.[0]
-        e.target.value = ''
-        if (f) set(await loadImage(f))
-      }} />
     </label>
   )
 }

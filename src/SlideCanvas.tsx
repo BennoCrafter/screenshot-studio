@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { DEVICE_BY_ID, restFold } from './devices/models'
 import type { DevicePose } from './devices/render3d'
-import { IMAGE_TYPES, loadImage } from './project'
+import { loadImage } from './project'
+import { accepts, IMAGE_FILES } from './native'
 import { shotOf, type Shot } from './elements'
 import { drawSlide, layersOf, type Anchor, type Part, type Slide } from './render'
 
@@ -219,7 +220,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
     e.preventDefault()
     const file = e.dataTransfer.files[0]
     const part = (e.target as HTMLElement).dataset.part ?? 'device'
-    if (!file || !IMAGE_TYPES.split(',').includes(file.type) || !anchor?.anchors[part]?.dev || !layersOf(slide).includes(part)) return
+    if (!file || !accepts(IMAGE_FILES, file.name) || !anchor?.anchors[part]?.dev || !layersOf(slide).includes(part)) return
     const img = await loadImage(file)
     const shot = shotOf(slide, part)
     onShot(part, DEVICE_BY_ID[shot.device.model]?.outer && shot.device.fold < 90 ? { outerImage: img } : { image: img })

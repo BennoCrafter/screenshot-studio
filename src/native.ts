@@ -3,7 +3,19 @@
 
 export const isDesktop = '__TAURI_INTERNALS__' in window
 
-type Filter = { name: string; extensions: string[] }
+export type Filter = { name: string; extensions: string[] }
+
+/** The files each picker offers (and drops accept). */
+export const IMAGE_FILES: Filter = { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg'] }
+export const FONT_FILES: Filter = { name: 'Fonts', extensions: ['ttf', 'otf', 'woff', 'woff2'] }
+export const accepts = (filter: Filter, name: string) => filter.extensions.includes(name.split('.').pop()!.toLowerCase())
+
+/** A file's type from its name: images and fonts. */
+export const typeOfName = (name: string) => {
+  const e = name.split('.').pop()!.toLowerCase()
+  if (FONT_FILES.extensions.includes(e)) return `font/${e}`
+  return `image/${{ jpg: 'jpeg', svg: 'svg+xml' }[e] ?? e}`
+}
 
 export async function ask(message: string) {
   if (!isDesktop) return confirm(message)
@@ -61,21 +73,26 @@ export async function saveFile(name: string, blob: Blob, filter: Filter) {
   return true
 }
 
-/** Pick and read a text file; null if cancelled. */
-export async function openTextFile(filter: Filter): Promise<string | null> {
+/** Pick files of `filter`'s types; none if cancelled. The desktop app uses its own Open dialog, which lists only those
+ *  (the webview's file input doesn't filter reliably). */
+export async function openFiles(filter: Filter, multiple = false): Promise<File[]> {
   if (isDesktop) {
     const { open } = await import('@tauri-apps/plugin-dialog')
-    const path = await open({ filters: [filter] })
-    if (!path) return null
-    const { readTextFile } = await import('@tauri-apps/plugin-fs')
-    return readTextFile(path)
+    const picked = await open({ filters: [filter], multiple })
+    const paths = picked === null ? [] : Array.isArray(picked) ? picked : [picked]
+    const { readFile } = await import('@tauri-apps/plugin-fs')
+    return Promise.all(paths.map(async (p) => new File([await readFile(p)], p.split(/[\\/]/).pop()!, { type: typeOfName(p) })))
   }
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
+    input.multiple = multiple
     input.accept = filter.extensions.map((e) => `.${e}`).join(',')
-    input.onchange = () => (input.files?.[0] ? input.files[0].text().then(resolve) : resolve(null))
-    input.oncancel = () => resolve(null)
+    input.onchange = () => resolve([...(input.files ?? [])].filter((f) => accepts(filter, f.name)))
+    input.oncancel = () => resolve([])
     input.click()
   })
 }
+
+/** Pick and read a text file; null if cancelled. */
+export const openTextFile = async (filter: Filter) => (await openFiles(filter))[0]?.text() ?? null

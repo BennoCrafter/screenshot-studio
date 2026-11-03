@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { MCP_URL } from './agent'
 import { APPROVE_TOOL, onApproval, type Approval } from './tools'
 import { extOfType } from './project'
+import { IMAGE_FILES, openFiles } from './native'
 import { claudeLinked, openSettings, storedOthers } from './Settings'
 import { EFFORTS, MODELS, MODES, useStored } from './prefs'
 
@@ -95,7 +96,6 @@ export function Chat({ hidden }: { hidden: boolean }) {
   const [asks, setAsks] = useState<Approval[]>([])
   const session = useRef<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
-  const picker = useRef<HTMLInputElement>(null)
   const add = (it: Item) => setItems((all) => [...all, it])
 
   useEffect(() => {
@@ -291,10 +291,9 @@ export function Chat({ hidden }: { hidden: boolean }) {
             }}
           />
           <div className="composer-bar">
-            <button type="button" className="icon" title="Attach images" onClick={() => picker.current!.click()}>
+            <button type="button" className="icon" title="Attach images" onClick={async () => attach(await openFiles(IMAGE_FILES, true))}>
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 12.5l-8.5 8.5a5 5 0 0 1-7-7L14 5.5a3.3 3.3 0 0 1 4.7 4.7L10.2 18.7a1.7 1.7 0 0 1-2.4-2.4L15.5 8.6" /></svg>
             </button>
-            <input ref={picker} type="file" accept="image/*" multiple hidden onChange={(e) => { attach(e.target.files ?? []); e.target.value = '' }} />
             <select value={model} onChange={(e) => setModel(e.target.value as keyof typeof MODELS)} disabled={busy} title="Model">
               {Object.entries(MODELS).map(([m, label]) => <option key={m} value={m}>{label}</option>)}
             </select>

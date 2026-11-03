@@ -1,7 +1,8 @@
 // The MCP tools: each reads or changes the live project through the Host.
 
 import { DEVICES, DEVICE_BY_ID } from './devices/models'
-import { deleteProject, fontFamily, fontFrom, LANGUAGES, languagesOf, listProjects, loadImage, typeOfName, type Project } from './project'
+import { deleteProject, fontFamily, fontFrom, LANGUAGES, languagesOf, listProjects, loadImage, type Project } from './project'
+import { typeOfName } from './native'
 import { FONTS, layersOf, localize, PLATFORMS, renderSlide, SIZES, THEMES, type Item, type Style, type Platform, type Slide, type Target } from './render'
 import { labelOf } from './elements'
 import type { DevicePose } from './devices/render3d'

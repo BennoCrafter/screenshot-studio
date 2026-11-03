@@ -2,7 +2,7 @@
 // them as files in the app data folder (~/Library/Application Support/app.screenshotstudio.desktop
 // on macOS); the browser keeps them in IndexedDB with their screenshots as Blobs.
 
-import { isDesktop } from './native'
+import { isDesktop, typeOfName } from './native'
 import { FONT, type Item, type Platform, type Slide, type Target, type Translation } from './render'
 
 export interface Project {
@@ -19,8 +19,6 @@ export interface Project {
 // shortcut: kept inline as a data URL, so project.json is rewritten with it on every save; store it as a file like screenshots if that gets slow
 export interface ProjectFont { name: string; data: string }
 export const fontFamily = (name: string) => `"${name}", ${FONT}`
-/** The font files the pickers offer. */
-export const FONT_TYPES = '.ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2'
 
 const faces = new Map<string, { face: FontFace; data: string }>() // registered fonts by name
 /** Registers a project font with the page so the canvas can draw with it; throws if it isn't a font. */
@@ -103,18 +101,12 @@ const summary = ({ id, name, updated, thumb, targets }: WithImages<unknown>): Pr
 const blobs = new WeakMap<HTMLImageElement, Blob>()
 const blobOf = (img: HTMLImageElement | null) => (img && blobs.get(img)) ?? null
 
-/** An image file's type from its name, and the extension to store a type under. */
-export const typeOfName = (name: string) => {
-  const e = name.split('.').pop()!.toLowerCase()
-  return `image/${{ jpg: 'jpeg', svg: 'svg+xml' }[e] ?? e}`
-}
+/** The extension to store an image type under. */
 export const extOfType = (type: string) => {
   const t = type.split('/')[1]
   return ({ jpeg: 'jpg', 'svg+xml': 'svg' } as Record<string, string>)[t] ?? (t || 'png')
 }
 
-/** The image types screenshots and images can be: what the file pickers offer and drops accept. */
-export const IMAGE_TYPES = 'image/png,image/jpeg,image/webp,image/svg+xml'
 
 export async function loadImage(blob: Blob): Promise<HTMLImageElement> {
   const img = new Image()
