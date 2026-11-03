@@ -124,6 +124,10 @@ export async function loadImage(blob: Blob): Promise<HTMLImageElement> {
   return img
 }
 
+/** A loader that turns a missing or broken screenshot into an empty one, so the rest of the project still opens. */
+const orEmpty = <A>(load: (a: A) => Promise<HTMLImageElement | null>) => (a: A) =>
+  load(a).catch((e) => { console.warn('screenshot not loaded, left empty', e); return null })
+
 // ---- IndexedDB (browser) ----------------------------------------------------------
 
 const STORE = 'projects'
@@ -153,7 +157,7 @@ const idb = {
     await run('readwrite', (s) => s.put(stored))
   },
   open: async (id: string): Promise<Project> =>
-    mapImages(await run<WithImages<Blob | null>>('readonly', (s) => s.get(id)), (b) => (b ? loadImage(b) : null)),
+    mapImages(await run<WithImages<Blob | null>>('readonly', (s) => s.get(id)), orEmpty(async (b) => (b ? loadImage(b) : null))),
   list: async () => (await run<WithImages<Blob | null>[]>('readonly', (s) => s.getAll())).map(summary),
   delete: (id: string) => run('readwrite', (s) => s.delete(id)),
 }
@@ -203,12 +207,12 @@ const files = {
   open: async (id: string): Promise<Project> => {
     const { readFile } = await fs()
     const opt = await at()
-    return mapImages(await readStored(id), async (name) => {
+    return mapImages(await readStored(id), orEmpty(async (name) => {
       if (!name) return null
       const blob = new Blob([await readFile(`${dirOf(id)}/${name}`, opt)], { type: typeOfName(name) })
       names.set(blob, name)
       return loadImage(blob)
-    })
+    }))
   },
   list: async () => {
     const { exists, readDir } = await fs()
@@ -272,7 +276,7 @@ export async function projectToFile(p: Project): Promise<Blob> {
 export async function projectFromFile(text: string): Promise<Project> {
   const data = JSON.parse(text)
   if (data?.format !== 'screenshot-studio') throw new Error('Not a Screenshot Studio project file')
-  const p = await mapImages(data.project as WithImages<string | null>, async (u) =>
-    u ? loadImage(await (await fetch(u)).blob()) : null)
+  const p = await mapImages(data.project as WithImages<string | null>, orEmpty(async (u) =>
+    u ? loadImage(await (await fetch(u)).blob()) : null))
   return withFonts({ ...p, updated: Date.now() })
 }
