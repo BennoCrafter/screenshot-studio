@@ -3,7 +3,7 @@
 // on macOS); the browser keeps them in IndexedDB with their screenshots as Blobs.
 
 import { isDesktop } from './native'
-import type { Item, Platform, Slide, Target, Translation } from './render'
+import { FONT, type Item, type Platform, type Slide, type Target, type Translation } from './render'
 
 export interface Project {
   id: string
@@ -12,6 +12,37 @@ export interface Project {
   targets: Target[]
   languages?: string[] // App Store locales, first is the primary; missing means ['en']
   thumb?: string // small JPEG data URL of the first slide, for the start page
+  fonts?: ProjectFont[] // fonts added to the project, for its texts
+}
+
+/** A font file added to a project; texts use it through fontFamily(name). */
+// shortcut: kept inline as a data URL, so project.json is rewritten with it on every save; store it as a file like screenshots if that gets slow
+export interface ProjectFont { name: string; data: string }
+export const fontFamily = (name: string) => `"${name}", ${FONT}`
+/** The font files the pickers offer. */
+export const FONT_TYPES = '.ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2'
+
+const faces = new Map<string, { face: FontFace; data: string }>() // registered fonts by name
+/** Registers a project font with the page so the canvas can draw with it; throws if it isn't a font. */
+async function loadFont({ name, data }: ProjectFont) {
+  if (faces.get(name)?.data === data) return
+  const face = await new FontFace(name, `url(${data})`).load()
+  const old = faces.get(name)
+  if (old) document.fonts.delete(old.face)
+  document.fonts.add(face)
+  faces.set(name, { face, data })
+}
+/** A project's fonts loaded before it's shown; one that won't load leaves its texts in the system font. */
+const withFonts = async (p: Project) => {
+  await Promise.all((p.fonts ?? []).map((f) => loadFont(f).catch(() => {})))
+  return p
+}
+/** A font file as a project font, loaded and ready to draw with. */
+export async function fontFrom(blob: Blob, name: string): Promise<ProjectFont> {
+  const font = { name: name.trim(), data: await toDataUrl(blob) }
+  if (!font.name) throw new Error('A font needs a name')
+  await loadFont(font).catch(() => { throw new Error(`${name} isn't a font file (TTF, OTF, WOFF or WOFF2)`) })
+  return font
 }
 
 export const languagesOf = (p: Pick<Project, 'languages'>) => p.languages?.length ? p.languages : ['en']
@@ -81,6 +112,9 @@ export const extOfType = (type: string) => {
   const t = type.split('/')[1]
   return ({ jpeg: 'jpg', 'svg+xml': 'svg' } as Record<string, string>)[t] ?? (t || 'png')
 }
+
+/** The image types screenshots and images can be: what the file pickers offer and drops accept. */
+export const IMAGE_TYPES = 'image/png,image/jpeg,image/webp,image/svg+xml'
 
 export async function loadImage(blob: Blob): Promise<HTMLImageElement> {
   const img = new Image()
@@ -200,7 +234,7 @@ const files = {
 const store = isDesktop ? files : idb
 
 export const saveProject = (p: Project) => store.save(p)
-export const openProject = (id: string) => store.open(id)
+export const openProject = async (id: string) => withFonts(await store.open(id))
 export const deleteProject = (id: string) => store.delete(id)
 export async function listProjects(): Promise<ProjectSummary[]> {
   return (await store.list()).sort((a, b) => b.updated - a.updated)
@@ -248,5 +282,5 @@ export async function projectFromFile(text: string): Promise<Project> {
   if (data?.format !== 'screenshot-studio') throw new Error('Not a Screenshot Studio project file')
   const p = await mapImages(data.project as WithImages<string | null>, async (u) =>
     u ? loadImage(await (await fetch(u)).blob()) : null)
-  return { ...p, updated: Date.now() }
+  return withFonts({ ...p, updated: Date.now() })
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ask, isDesktop, saveFile, saveFiles } from './native'
 import { languageName, languagesOf, PROJECT_FILE, projectToFile, type Project } from './project'
+import { labelOf } from './elements'
 import { localize, PLATFORMS, renderSlide, SIZES } from './render'
 import { openLink } from './Settings'
 import { loadCustom, saveCustom, shareTemplate, toData, type Template } from './templates'
@@ -148,7 +149,7 @@ export function Export({ project }: { project: Project }) {
                         className={skip.has(s.id) ? 'ex-slide off' : 'ex-slide'}
                         style={{ width: w > h ? THUMB_W * 1.6 : THUMB_W, aspectRatio: `${w} / ${h}` }}
                         aria-pressed={!skip.has(s.id)}
-                        title={localize(s, langs[0]).title || `Slide ${i + 1}`}
+                        title={labelOf(s) || `Slide ${i + 1}`}
                         onClick={() => toggle(s.id)}
                       >
                         {thumbs[s.id] && <img src={thumbs[s.id]} alt="" />}
@@ -212,11 +213,11 @@ export function Export({ project }: { project: Project }) {
             <p className="hint">Saves the whole project, every platform, as a template to start new projects from.</p>
             <label>Name<input value={name} onChange={(e) => setName(e.target.value)} /></label>
             <label>Description<input value={description} placeholder="What it looks like, who it's for" onChange={(e) => setDescription(e.target.value)} /></label>
-            <label className="toggle"><input type="checkbox" checked={shots} onChange={(e) => setShots(e.target.checked)} />Include screenshots and images</label>
-            <p className="hint">Turn this off to remove every screenshot and image from the template. The text, colours, devices and layout stay.</p>
+            <label><input type="checkbox" checked={shots} onChange={(e) => setShots(e.target.checked)} />Include screenshots and images</label>
+            <p className="hint">Turn this off to remove every screenshot and image from the template. The text, colors, devices and layout stay.</p>
             {isDesktop && (
               <>
-                <label className="toggle"><input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />Share with everyone</label>
+                <label><input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />Share with everyone</label>
                 <p className="hint">Opens a pull request on GitHub adding it to Screenshot Studio's templates, using your GitHub CLI login (<code>gh auth login</code>). Everything in it becomes public{shots ? ', screenshots included' : ''}.</p>
               </>
             )}

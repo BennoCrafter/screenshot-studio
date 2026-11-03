@@ -2,41 +2,29 @@ import { renderDevice, type DevicePose } from './devices/render3d'
 
 // One draw function for both preview and export, so what you see is exactly what you get.
 
-export type Layout = 'text-top' | 'text-bottom'
-
 export interface Slide {
   id: string
-  title: string
-  subtitle: string
   bg1: string
   bg2: string
   angle: number // gradient angle, degrees
-  textColor: string
-  layout: Layout
-  titleBox?: TextBox
-  subtitleBox?: TextBox
-  items?: Item[] // objects added on top of the built-in ones
+  textColor: string // texts without a color of their own
+  items?: Item[] // texts, shapes, images and extra devices
   layers?: Part[] // what's on the slide, back to front; a part left out is deleted
   image: HTMLImageElement | null
   outerImage: HTMLImageElement | null // foldables' outer display
   device: DevicePose
   translations?: Record<string, Translation> // other languages' text; everything else is shared
-  primary?: Pick<Slide, 'title' | 'subtitle'> // set by localize: the text the device is laid out by, so languages never move it
 }
 
 export interface Translation {
-  title: string
-  subtitle: string
-  items?: Record<string, string> // added texts by item id
+  items?: Record<string, string> // texts by item id
   shots?: Record<Part, LangShot> // screenshots by device part ('device' or an item id)
 }
 /** A device's screenshots in one language; a missing (or null) one shows the primary language's. */
 export interface LangShot { image?: HTMLImageElement | null; outerImage?: HTMLImageElement | null }
 
-/** An element on a slide: 'title', 'subtitle', 'device' or an item's id. The background sits behind them all. */
+/** An element on a slide: 'device' (the slide's own) or an item's id. The background sits behind them all. */
 export type Part = string
-export type TextPart = 'title' | 'subtitle'
-export const BUILT_IN_PARTS: Part[] = ['title', 'subtitle', 'device']
 
 /** An added object. Positions are its centre, as fractions of slide width and height; sizes are fractions of slide width. */
 export interface Item {
@@ -47,26 +35,23 @@ export interface Item {
   w: number // text wraps at this width
   h: number // shapes and images
   size?: number // text: font size
+  font?: string // text: CSS font family, the system font if unset
+  weight?: number // text: font weight, 600 if unset
+  opacity?: number // text: 1 if unset
   text?: string
-  color?: string // text (the slide's text colour if unset) and shapes
+  color?: string // text (the slide's text color if unset) and shapes
   rotation?: number // degrees clockwise (not devices: they spin with their pose)
   image?: HTMLImageElement | null // images, and devices' screenshots
   outerImage?: HTMLImageElement | null // devices: a foldable's outer display
   device?: DevicePose // devices: placed by x, y; its size is a fraction of slide width
 }
-/** A text's offset from where the layout puts it (fractions of slide width/height), its size, 1 being the layout's, and its turn in degrees clockwise. */
-export interface TextBox { x: number; y: number; scale: number; rotation?: number }
-export const NO_BOX: TextBox = { x: 0, y: 0, scale: 1 }
-export const layersOf = (s: Pick<Slide, 'layers'>): Part[] => s.layers ?? BUILT_IN_PARTS
+export const layersOf = (s: Pick<Slide, 'layers'>): Part[] => s.layers ?? ['device']
 
 /** The slide with `lang`'s text and screenshots, falling back to the primary language's. */
 export function localize(s: Slide, lang?: string): Slide {
   const t = lang ? s.translations?.[lang] : undefined
   return t ? {
     ...s,
-    primary: { title: s.title, subtitle: s.subtitle },
-    title: t.title || s.title,
-    subtitle: t.subtitle || s.subtitle,
     image: t.shots?.device?.image ?? s.image,
     outerImage: t.shots?.device?.outerImage ?? s.outerImage,
     items: s.items?.map((i) => ({
@@ -77,14 +62,14 @@ export function localize(s: Slide, lang?: string): Slide {
   } : s
 }
 
-export type Style = Pick<Slide, 'bg1' | 'bg2' | 'angle' | 'textColor' | 'layout'>
+export type Style = Pick<Slide, 'bg1' | 'bg2' | 'angle' | 'textColor'>
 
 export const THEMES: Record<string, Style> = {
-  Midnight: { bg1: '#1e1b4b', bg2: '#4c1d95', angle: 160, textColor: '#ffffff', layout: 'text-top' },
-  Sunrise: { bg1: '#fb923c', bg2: '#f43f5e', angle: 135, textColor: '#ffffff', layout: 'text-top' },
-  Mint: { bg1: '#d1fae5', bg2: '#a7f3d0', angle: 180, textColor: '#064e3b', layout: 'text-top' },
-  Paper: { bg1: '#fafaf9', bg2: '#e7e5e4', angle: 180, textColor: '#1c1917', layout: 'text-bottom' },
-  Ocean: { bg1: '#0ea5e9', bg2: '#1e3a8a', angle: 200, textColor: '#ffffff', layout: 'text-bottom' },
+  Midnight: { bg1: '#1e1b4b', bg2: '#4c1d95', angle: 160, textColor: '#ffffff' },
+  Sunrise: { bg1: '#fb923c', bg2: '#f43f5e', angle: 135, textColor: '#ffffff' },
+  Mint: { bg1: '#d1fae5', bg2: '#a7f3d0', angle: 180, textColor: '#064e3b' },
+  Paper: { bg1: '#fafaf9', bg2: '#e7e5e4', angle: 180, textColor: '#1c1917' },
+  Ocean: { bg1: '#0ea5e9', bg2: '#1e3a8a', angle: 200, textColor: '#ffffff' },
 }
 
 export const SIZES = {
@@ -121,8 +106,17 @@ export interface Target {
 }
 
 export const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif'
+/** The fonts a text can pick, by name; each falls back to the system font where it isn't installed. */
+export const FONTS: Record<string, string> = {
+  System: FONT,
+  Rounded: `ui-rounded, "SF Pro Rounded", ${FONT}`,
+  Serif: 'ui-serif, "New York", Georgia, serif',
+  Mono: 'ui-monospace, "SF Mono", Menlo, monospace',
+  ...Object.fromEntries(['Helvetica Neue', 'Avenir Next', 'Futura', 'Gill Sans', 'Optima', 'Georgia', 'Baskerville', 'Didot', 'American Typewriter', 'Marker Felt', 'Chalkboard SE']
+    .map((f) => [f, `"${f}", ${FONT}`])),
+}
 
-function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+export function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   const lines: string[] = []
   for (const para of text.split('\n')) {
     let line = ''
@@ -138,13 +132,6 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string
   return lines
 }
 
-function textHeight(ctx: CanvasRenderingContext2D, text: string, w: number, size: number, weight: number) {
-  if (!text.trim()) return 0
-  ctx.font = `${weight} ${size}px ${FONT}`
-  return wrap(ctx, text, w * 0.84).length * size * 1.15
-}
-
-export const TEXT_STYLE = { title: { weight: 800, alpha: 1 }, subtitle: { weight: 500, alpha: 0.85 }, item: { weight: 600, alpha: 1 } } as const
 
 /** Where an element landed, in slide px; texts also say how they're set, for typing on top of them. */
 export interface Anchor {
@@ -153,7 +140,7 @@ export interface Anchor {
   w: number
   h: number
   rotation?: number // degrees clockwise about its centre
-  text?: { cx: number; wrap: number; size: number; weight: number; alpha: number; color: string; lines: string[] }
+  text?: { cx: number; wrap: number; size: number; font: string; weight: number; alpha: number; color: string; lines: string[] }
   dev?: { cx: number; cy: number; radius: number } // devices: centre and flat half-height, for the turn grips
 }
 
@@ -170,44 +157,25 @@ export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h:
   ctx.fillRect(0, 0, w, h)
 
   /** A centred text block whose first line's top sits at `top`. */
-  const setText = (text: string, cx: number, top: number, wrapW: number, size: number, style: { weight: number; alpha: number }, color: string): Anchor => {
-    ctx.font = `${style.weight} ${size}px ${FONT}`
+  const setText = (text: string, cx: number, top: number, wrapW: number, size: number, style: { font: string; weight: number; alpha: number }, color: string): Anchor => {
+    ctx.font = `${style.weight} ${size}px ${style.font}`
     const lines = text.trim() ? wrap(ctx, text, wrapW) : []
     const lw = Math.max(size * 2, ...lines.map((l) => ctx.measureText(l).width))
     // an empty text keeps one line's height so it can still be grabbed
     return { x: cx - lw / 2, y: top, w: lw, h: Math.max(1, lines.length) * size * 1.15, text: { cx, wrap: wrapW, size, color, lines, ...style } }
   }
 
-  // texts: laid out at their resting spots, so moving or resizing one leaves everything else in place
-  const unit = Math.min(w, h * 0.8) // portrait sizes by width; landscape (Mac) is held back by height
-  const base = { title: unit * 0.085, subtitle: unit * 0.042 }
-  const gap = base.subtitle * 0.6, pad = h * 0.06
-  const titleH = textHeight(ctx, s.title, w, base.title, 800)
-  const baseH = titleH + gap + textHeight(ctx, s.subtitle, w, base.subtitle, 500)
-  const baseY = s.layout === 'text-top' ? pad : h - pad - baseH
-  const lay = (p: TextPart, restY: number) => {
-    const b = s[`${p}Box`] ?? NO_BOX
-    return { ...setText(s[p], w / 2 + b.x * w, restY + b.y * h, w * 0.84 * b.scale, base[p] * b.scale, TEXT_STYLE[p], s.textColor), rotation: b.rotation }
-  }
-  const anchors: Record<Part, Anchor> = { title: lay('title', baseY), subtitle: lay('subtitle', baseY + titleH + gap) }
-
-  // device: rendered in 3D, bleeding off the edge opposite the text
+  // device: rendered in 3D, centred on the slide's middle plus its offset
   const dev = renderDevice(s.device, s.image, s.outerImage, w * s.device.size)
-  // Phones keep their resting height so turning never shifts them; a laptop's shape depends
-  // so much on its lid that it's laid out by what's actually drawn.
-  const tall = dev.laptop ? dev.height : dev.flatHeight
-  // placed by the primary language's text, so a translation that wraps differently leaves it put
-  const p0 = s.primary ?? s
-  const restH = textHeight(ctx, p0.title, w, base.title, 800) + gap + textHeight(ctx, p0.subtitle, w, base.subtitle, 500)
-  const top = s.layout === 'text-top' ? pad + restH + pad * 0.8 : h - pad - restH - pad * 0.8 - tall
   const cx = w / 2 + s.device.x * w
-  const cy = top + tall / 2 + s.device.y * h
+  const cy = h / 2 + s.device.y * h
+  const anchors: Record<Part, Anchor> = {}
   anchors.device = { x: cx - dev.width / 2, y: cy - dev.height / 2, w: dev.width, h: dev.height, dev: { cx, cy, radius: dev.flatHeight / 2 } }
   const drawn: Record<Part, HTMLCanvasElement> = { device: own(dev.canvas) }
 
   for (const i of s.items ?? []) {
     if (i.kind === 'text') {
-      const t = setText(i.text ?? '', i.x * w, 0, i.w * w, (i.size ?? 0.05) * w, TEXT_STYLE.item, i.color ?? s.textColor)
+      const t = setText(i.text ?? '', i.x * w, 0, i.w * w, (i.size ?? 0.05) * w, { font: i.font ?? FONT, weight: i.weight ?? 600, alpha: i.opacity ?? 1 }, i.color ?? s.textColor)
       anchors[i.id] = { ...t, y: i.y * h - t.h / 2, rotation: i.rotation } // centred on its spot, growing both ways
     } else if (i.kind === 'device' && i.device) {
       const d = renderDevice(i.device, i.image ?? null, i.outerImage ?? null, w * i.device.size)
@@ -229,13 +197,15 @@ export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h:
       ctx.translate(-cx, -cy)
     }
     if (drawn[p]) {
-      ctx.shadowColor = 'rgba(0,0,0,0.35)'
-      ctx.shadowBlur = w * 0.05
-      ctx.shadowOffsetY = w * 0.015
+      if ((item?.device ?? s.device).shadow !== false) {
+        ctx.shadowColor = 'rgba(0,0,0,0.35)'
+        ctx.shadowBlur = w * 0.05
+        ctx.shadowOffsetY = w * 0.015
+      }
       ctx.drawImage(drawn[p], at.x, at.y, at.w, at.h)
     } else if (at.text) {
       const t = at.text
-      ctx.font = `${t.weight} ${t.size}px ${FONT}`
+      ctx.font = `${t.weight} ${t.size}px ${t.font}`
       ctx.fillStyle = t.color
       ctx.globalAlpha = t.alpha
       ctx.textAlign = 'center'

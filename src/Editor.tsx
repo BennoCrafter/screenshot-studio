@@ -6,10 +6,10 @@ import { Chat } from './Chat'
 import { Themes } from './Themes'
 import { openSettings } from './Settings'
 import { animate } from './motion'
-import { ask, isDesktop } from './native'
-import { LANGUAGES, languageName, languagesOf, loadImage, type Project } from './project'
-import { added, isDevice, isText, isTextPart, itemOf, missingBuiltIns, moved, newItem, partName, removed, reset, resized, restack, rotated, shotOf, withShot, withText, type Shot } from './elements'
-import { layersOf, localize, PLATFORMS, SIZES, type Item, type Part, type Platform, type Slide, type Style, type Target } from './render'
+import { ask, isDesktop, tell } from './native'
+import { FONT_TYPES, fontFamily, fontFrom, IMAGE_TYPES, LANGUAGES, languageName, languagesOf, loadImage, type Project, type ProjectFont } from './project'
+import { added, isDevice, isText, itemOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotOf, withShot, withText, type Shot } from './elements'
+import { FONT, FONTS, layersOf, localize, PLATFORMS, SIZES, type Item, type Part, type Platform, type Slide, type Style, type Target } from './render'
 import { SlideCanvas } from './SlideCanvas'
 import { Export } from './Export'
 import { adaptTarget, ALL_PLATFORMS, poseFor } from './templates'
@@ -21,7 +21,7 @@ const same = (a: Sel, b: Sel) => a.slide === b.slide && a.part === b.part
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && t.matches('input, textarea, select, [contenteditable]')
 
 // Copied elements, kept across projects; ponytail: in-app only, the system clipboard holds just typed text
-let clipboard: { part: Part; slide: Slide; text: string }[] = []
+let clipboard: { part: Part; slide: Slide }[] = []
 
 export function Editor({ project, setProject: commit, onClose }: { project: Project; setProject: Updater<Project>; onClose: () => void }) {
   // undo history: a burst of changes (one drag, a few words typed) is one step
@@ -92,7 +92,6 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     }))
     animate(() => setLang(langs[0]))
   }
-  const textOf = (s: Slide) => (lang === langs[0] ? s : s.translations?.[lang] ?? { title: '', subtitle: '' })
   const textLang = lang === langs[0] ? undefined : lang
   const setText = (s: Slide, part: Part, text: string) => update(s.id, withText(s, part, text, textLang))
   const addPlatform = (platform: Platform) => {
@@ -104,6 +103,17 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     setProject((p) => ({ ...p, targets: p.targets.filter((t) => t.platform !== platform) }))
     setTi(0)
   }
+  /** A font file added to the project (replacing one of the same name). */
+  const addFont = async (file: File) => {
+    const font = await fontFrom(file, file.name.replace(/\.[^.]+$/, ''))
+    setProject((p) => ({ ...p, fonts: [...(p.fonts ?? []).filter((f) => f.name !== font.name), font] }))
+    return font
+  }
+  /** Every text in the project, on every platform, set in `font`. */
+  const fontForAll = (font: string) => setProject((p) => ({
+    ...p,
+    targets: p.targets.map((t) => ({ ...t, slides: t.slides.map((s) => ({ ...s, items: s.items?.map((i) => (i.kind === 'text' ? { ...i, font } : i)) })) })),
+  }))
   const missing = ALL_PLATFORMS.filter((p) => !project.targets.some((t) => t.platform === p))
 
   const update = (id: string, patch: Partial<Slide>) =>
@@ -164,19 +174,17 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
   const copy = () => {
     const picked = selection.flatMap(({ slide, part }) => {
       const s = slides.find((s) => s.id === slide)
-      if (!s || !layersOf(s).includes(part)) return []
-      const local = localize(s, lang)
-      return [{ part, slide: s, text: part === 'title' || part === 'subtitle' ? local[part] : itemOf(local, part)?.text ?? '' }]
+      return s && layersOf(s).includes(part) ? [{ part, slide: s }] : []
     })
     if (picked.length) clipboard = picked
   }
-  // a built-in pasted onto a slide replaces its own (words and placement, or the device and its screenshots);
-  // an added object is pasted as a new one, nudged when it lands on the slide it came from
+  // the slide's own device pasted onto a slide replaces its device and screenshots; anything else is pasted as a
+  // new object, nudged when it lands on the slide it came from
   const paste = () => {
     const targets = new Set(selection.map((x) => x.slide))
     if (!clipboard.length || !targets.size) return
     const picked: Sel[] = []
-    setSlides((all) => all.map((s) => !targets.has(s.id) ? s : clipboard.reduce((s, { part, slide, text }) => {
+    setSlides((all) => all.map((s) => !targets.has(s.id) ? s : clipboard.reduce((s, { part, slide }) => {
       const item = itemOf(slide, part)
       if (item) {
         const nudge = slide.id === s.id ? 0.03 : 0
@@ -185,14 +193,12 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         return { ...s, ...added(s, copy) }
       }
       picked.push({ slide: s.id, part })
-      const s2 = { ...s, ...added(s, part) }
-      if (part === 'device') return { ...s2, device: { ...slide.device }, image: slide.image, outerImage: slide.outerImage }
-      return { ...s2, ...withText(s2, part, text, textLang), [`${part}Box`]: slide[`${part as 'title'}Box`] }
+      return { ...s, ...added(s, part), device: { ...slide.device }, image: slide.image, outerImage: slide.outerImage }
     }, s)))
     setSelection(picked)
   }
   /** The picked elements on slide `fromId` moved onto `toId`, which sits (dx, dy) slide sizes away, keeping where they
-   *  are on screen. Text in every language goes along; a headline, subtitle or device replaces the one already there. */
+   *  are on screen. Text in every language goes along; the slide's own device replaces the one already there. */
   const transfer = (fromId: string, toId: string, dx: number, dy: number) => {
     const parts = selection.filter((x) => x.slide === fromId).map((x) => x.part)
     setSlides((all) => {
@@ -201,9 +207,8 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         if (!layersOf(src).includes(part)) continue
         to = { ...to, ...added(to, itemOf(src, part) ?? part) }
         if (part === 'device') to = { ...to, device: src.device, image: src.image, outerImage: src.outerImage }
-        if (isTextPart(part)) to = { ...to, [part]: src[part], [`${part}Box`]: src[`${part}Box`] }
         for (const [l, t] of Object.entries(src.translations ?? {})) {
-          const text = isTextPart(part) ? t[part] : t.items?.[part]
+          const text = t.items?.[part]
           if (text) to = { ...to, ...withText(to, part, text, l) }
           const shots = t.shots?.[part]
           if (shots) to = { ...to, ...withShot(to, part, { image: shots.image, outerImage: shots.outerImage }, l) }
@@ -241,8 +246,8 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  const applyTheme = ({ bg1, bg2, angle, textColor, layout }: Style) =>
-    setSlides((all) => all.map((s) => ({ ...s, bg1, bg2, angle, textColor, layout })))
+  const applyTheme = ({ bg1, bg2, angle, textColor }: Style) =>
+    setSlides((all) => all.map((s) => ({ ...s, bg1, bg2, angle, textColor })))
 
   const addSlide = () => {
     const s = { ...(sel ?? slides[slides.length - 1]), id: crypto.randomUUID(), image: null, outerImage: null }
@@ -328,7 +333,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
             }}>+</button>
           )}
         </nav>
-        <Themes current={sel ?? slides[0]} title={localize(sel ?? slides[0], lang).title.split('\n')[0] || 'Your app'} onApply={applyTheme} />
+        <Themes current={sel ?? slides[0]} title={labelOf(localize(sel ?? slides[0], lang)) || 'Your app'} onApply={applyTheme} />
         <span className="spacer" />
         {!isDesktop && <button onClick={openSettings} title="Settings (⌘,)" aria-label="Settings"><Icon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></button>}
         <button onClick={addSlide}>Add slide</button>
@@ -357,7 +362,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
           <button onClick={insertDevice}><Icon d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM11 18h2" />Device</button>
           <button onClick={() => insert(() => newItem('rect'))}><Icon d="M4 6h16v12H4z" />Rectangle</button>
           <button onClick={() => insert(() => newItem('ellipse'))}><Icon d="M12 5c4.4 0 8 3.1 8 7s-3.6 7-8 7-8-3.1-8-7 3.6-7 8-7z" />Ellipse</button>
-          <input ref={imageInput} type="file" accept="image/*" hidden onChange={async (e) => {
+          <input ref={imageInput} type="file" accept={IMAGE_TYPES} hidden onChange={async (e) => {
             const f = e.target.files?.[0]
             e.target.value = ''
             if (!f) return
@@ -365,9 +370,6 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
             insert(() => newItem('image', img))
           }} />
         </div>
-        {missingBuiltIns(sel ?? slides[0]).filter((p) => p !== 'device').map((p) => (
-          <button key={p} className="restore" onClick={() => insert(() => p)}>Restore {partName(sel ?? slides[0], p).toLowerCase()}</button>
-        ))}
 
         <h3>Slides <span>{slides.length}</span></h3>
         <ol className="slide-list">
@@ -381,7 +383,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
               onDragOver={(e) => dragOver(e, i)}
               onDrop={(e) => e.preventDefault()}
             >
-              <button onClick={() => selectSlide(s.id)} title="Drag to reorder"><b>{i + 1}</b><span>{localize(s, lang).title.split('\n')[0] || 'Untitled'}</span></button>
+              <button onClick={() => selectSlide(s.id)} title="Drag to reorder"><b>{i + 1}</b><span>{labelOf(localize(s, lang)) || 'Untitled'}</span></button>
               <button title="Duplicate slide" onClick={() => duplicateSlide(s)}>⧉</button>
               <button title="Delete slide" disabled={slides.length === 1} onClick={() => removeSlide(s)}>×</button>
             </li>
@@ -398,16 +400,6 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
               pick={(part, additive) => press(sel, part, additive)}
               update={(patch) => update(sel.id, patch)}
             />
-            {(() => {
-              const item = selection.length === 1 ? itemOf(sel, selection[0].part) : undefined
-              return item && item.kind !== 'image' && item.kind !== 'device' && (
-                <label>
-                  Colour
-                  <input type="color" value={item.color ?? sel.textColor} onChange={(e) =>
-                    update(sel.id, { items: sel.items!.map((i) => (i.id === item.id ? { ...i, color: e.target.value } : i)) })} />
-                </label>
-              )
-            })()}
           </>
         )}
       </aside>
@@ -502,16 +494,15 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
             <SlideInspector
               key={sel.id}
               sel={sel}
-              device={selection.length === 1 && isDevice(sel, selection[0].part) && layersOf(sel).includes(selection[0].part) ? selection[0].part : 'device'}
-              text={textOf(sel)}
+              part={selection.filter((x) => x.slide === sel.id && layersOf(sel).includes(x.part)).at(-1)?.part ?? null}
               lang={textLang}
-              placeholder={lang === langs[0] ? undefined : sel}
-              setText={(patch) => Object.entries(patch).forEach(([p, t]) => setText(sel, p, t))}
+              setText={(part, text) => setText(sel, part, text)}
+              fonts={project.fonts ?? []}
+              addFont={addFont}
+              fontForAll={fontForAll}
               index={slides.indexOf(sel)}
-              count={slides.length}
+              size={size}
               update={(patch) => update(sel.id, patch)}
-              move={(dir) => move(sel, dir)}
-              remove={() => removeSlide(sel)}
             />
           ) : (
             <>
@@ -526,19 +517,157 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
   )
 }
 
-function SlideInspector({ sel, device, text, lang, placeholder, setText, index, count, update, move, remove }: {
+/** The picked element's settings (the last one, when several are picked), then the slide's own. */
+function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update }: {
   sel: Slide
-  lang?: string // the language being edited, when not the primary one: screenshots set here are its own
-  device: Part // the device the device controls change: the picked one, or the slide's own
-  text: Pick<Slide, 'title' | 'subtitle'>
-  placeholder?: Pick<Slide, 'title' | 'subtitle'> // the primary language's text, when editing another
-  setText: (patch: Partial<Pick<Slide, 'title' | 'subtitle'>>) => void
+  fonts: ProjectFont[] // the project's own
+  addFont: (file: File) => Promise<ProjectFont>
+  fontForAll: (font: string) => void
+  part: Part | null // the picked element on this slide
+  lang?: string // the language being edited, when not the primary one: text and screenshots set here are its own
+  setText: (part: Part, text: string) => void
   index: number
-  count: number
+  size: readonly [number, number] // the slide in px
   update: (patch: Partial<Slide>) => void
-  move: (dir: -1 | 1) => void
-  remove: () => void
 }) {
+  const item = part ? itemOf(sel, part) : undefined
+  const at = part ? positionOf(sel, part, size) : null
+  const setItem = (patch: Partial<Item>) => update({ items: sel.items!.map((i) => (i.id === item!.id ? { ...i, ...patch } : i)) })
+  return (
+    <div className="inspector-body">
+      {part && <h2>{partName(sel, part)}</h2>}
+      {part && at && (
+        <div className="vec2">
+          <span>Position</span>
+          {(['x', 'y'] as const).map((axis) => (
+            <ScrubNumber key={axis} axis={axis} value={Math.round(at[axis])} onChange={(v) =>
+              update(moved(sel, sel, part, axis === 'x' ? (v - at.x) / size[0] : 0, axis === 'y' ? (v - at.y) / size[1] : 0))} />
+          ))}
+        </div>
+      )}
+      {part && isDevice(sel, part) && <DeviceInspector sel={sel} device={part} lang={lang} update={update} />}
+      {item?.kind === 'text' && <TextInspector item={item} sel={sel} lang={lang} fonts={fonts} addFont={addFont} fontForAll={fontForAll} set={setItem} setText={(t) => setText(item.id, t)} />}
+      {(item?.kind === 'rect' || item?.kind === 'ellipse') && (
+        <label>Color<input type="color" value={item.color ?? sel.textColor} onChange={(e) => setItem({ color: e.target.value })} /></label>
+      )}
+      {item?.kind === 'image' && (
+        <ShotPicker label="Image" image={item.image ?? null} set={(image) => setItem({ image, h: (item.w * image.naturalHeight) / image.naturalWidth })} />
+      )}
+
+      <h2 className={part ? 'inspector-slide' : undefined}>Slide {index + 1}</h2>
+      <div className="row">
+        <label>Background<input type="color" value={sel.bg1} onChange={(e) => update({ bg1: e.target.value })} /></label>
+        <label>&nbsp;<input type="color" value={sel.bg2} onChange={(e) => update({ bg2: e.target.value })} /></label>
+        <label>Text<input type="color" value={sel.textColor} onChange={(e) => update({ textColor: e.target.value })} /></label>
+      </div>
+      <label>
+        Gradient angle · {sel.angle}°
+        <input type="range" min={0} max={360} value={sel.angle} onChange={(e) => update({ angle: +e.target.value })} />
+      </label>
+    </div>
+  )
+}
+
+/** A number with its axis letter in front, like Godot, Blender or Unity: type it, or drag the letter sideways to scrub (Shift for fine steps). */
+function ScrubNumber({ axis, value, onChange }: { axis: 'x' | 'y'; value: number; onChange: (v: number) => void }) {
+  const start = useRef<{ x: number; v: number } | null>(null)
+  return (
+    <label className={`scrub ${axis}`}>
+      <b
+        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); start.current = { x: e.clientX, v: value } }}
+        onPointerMove={(e) => start.current && onChange(Math.round(start.current.v + (e.clientX - start.current.x) * (e.shiftKey ? 0.2 : 2)))}
+        onPointerUp={() => (start.current = null)}
+        onPointerCancel={() => (start.current = null)}
+      >{axis.toUpperCase()}</b>
+      <input type="number" value={value} onChange={(e) => e.target.value !== '' && onChange(+e.target.value)} />
+    </label>
+  )
+}
+
+const WEIGHTS = [[300, 'Light'], [400, 'Regular'], [500, 'Medium'], [600, 'Semibold'], [700, 'Bold'], [800, 'Heavy'], [900, 'Black']] as const
+
+function TextInspector({ item, sel, lang, fonts, addFont, fontForAll, set, setText }: {
+  item: Item
+  sel: Slide
+  lang?: string
+  fonts: ProjectFont[]
+  addFont: (file: File) => Promise<ProjectFont>
+  fontForAll: (font: string) => void
+  set: (patch: Partial<Item>) => void
+  setText: (text: string) => void
+}) {
+  const weight = item.weight ?? 600, font = item.font ?? FONT
+  const fontInput = useRef<HTMLInputElement>(null)
+  const known = [...fonts.map((f) => fontFamily(f.name)), ...Object.values(FONTS)]
+  return (
+    <>
+      <label>
+        Text
+        {/* another language shows the primary language's words until it has its own */}
+        <textarea rows={3} value={lang ? sel.translations?.[lang]?.items?.[item.id] ?? '' : item.text ?? ''} placeholder={lang ? item.text : undefined}
+          onChange={(e) => setText(e.target.value)} />
+      </label>
+      {/* a button, not a menu entry: WebKit opens a file picker only from a click */}
+      <div className="field">
+        <div className="field-head">
+          Font
+          <span>
+            <button type="button" className="link" title="Use this font for every text in the project" onClick={() => fontForAll(font)}>Apply to all</button>
+            {' · '}
+            <button type="button" className="link" onClick={() => fontInput.current!.click()}>Add font…</button>
+          </span>
+        </div>
+        <select aria-label="Font" value={font} style={{ fontFamily: font }} onChange={(e) => set({ font: e.target.value })}>
+          {!known.includes(font) && <option value={font}>{font.split(',')[0].replace(/"/g, '')}</option>}
+          {fonts.length > 0 && (
+            <optgroup label="This project">
+              {fonts.map((f) => <option key={f.name} value={fontFamily(f.name)} style={{ fontFamily: fontFamily(f.name) }}>{f.name}</option>)}
+            </optgroup>
+          )}
+          <optgroup label="Built in">
+            {Object.entries(FONTS).map(([name, f]) => <option key={name} value={f} style={{ fontFamily: f }}>{name}</option>)}
+          </optgroup>
+        </select>
+        <input ref={fontInput} type="file" accept={FONT_TYPES} hidden onChange={async (e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ''
+          if (!f) return
+          try {
+            set({ font: fontFamily((await addFont(f)).name) })
+          } catch (err) {
+            tell((err as Error).message)
+          }
+        }} />
+      </div>
+      <div className="row">
+        <label>
+          Size
+          <input type="number" min={1} max={50} step={0.1} value={Math.round((item.size ?? 0.05) * 1000) / 10}
+            onChange={(e) => +e.target.value > 0 && set({ size: +e.target.value / 100 })} />
+        </label>
+        <label>
+          Weight
+          <select value={weight} onChange={(e) => set({ weight: +e.target.value })}>
+            {!WEIGHTS.some(([w]) => w === weight) && <option value={weight}>{weight}</option>}
+            {WEIGHTS.map(([w, n]) => <option key={w} value={w}>{n}</option>)}
+          </select>
+        </label>
+      </div>
+      <input type="range" aria-label="Size" min={0.01} max={0.2} step={0.001} value={item.size ?? 0.05} onChange={(e) => set({ size: +e.target.value })} />
+      <div className="row">
+        <label>Color<input type="color" value={item.color ?? sel.textColor} onChange={(e) => set({ color: e.target.value })} /></label>
+        <label>
+          Opacity · {Math.round((item.opacity ?? 1) * 100)}%
+          <input type="range" min={0.1} max={1} step={0.01} value={item.opacity ?? 1} onChange={(e) => set({ opacity: +e.target.value })} />
+        </label>
+      </div>
+      <p className="hint">Double-click the text on the slide to type there. Size is a percentage of the slide's width.</p>
+    </>
+  )
+}
+
+/** A device's screenshots and pose: the slide's own (`device` = 'device') or an added one. */
+function DeviceInspector({ sel, device, lang, update }: { sel: Slide; device: Part; lang?: string; update: (patch: Partial<Slide>) => void }) {
   const shot = shotOf(sel, device), pose = shot.device
   const setShot = (patch: Partial<Shot>) => update(withShot(sel, device, patch, lang))
   const own = lang ? sel.translations?.[lang]?.shots?.[device] : undefined // this language's own screenshots
@@ -551,39 +680,10 @@ function SlideInspector({ sel, device, text, lang, placeholder, setText, index, 
   const model = DEVICE_BY_ID[pose.model]
   const families = [...new Set(DEVICES.map((d) => d.family))]
   return (
-    <div className="inspector-body">
-      <h2>Slide {index + 1}</h2>
-      <label>
-        Headline
-        <textarea rows={2} value={text.title} placeholder={placeholder?.title} onChange={(e) => setText({ title: e.target.value })} />
-      </label>
-      <label>
-        Subtitle
-        <textarea rows={2} value={text.subtitle} placeholder={placeholder?.subtitle} onChange={(e) => setText({ subtitle: e.target.value })} />
-      </label>
-      <label>
-        {shotLabel('Screenshot', own?.image)}
-        <input
-          type="file"
-          accept="image/*"
-          onChange={async (e) => {
-            const f = e.target.files?.[0]
-            if (f) setShot({ image: await loadImage(f) })
-          }}
-        />
-      </label>
+    <>
+      <ShotPicker label={shotLabel('Screenshot', own?.image)} image={own?.image ?? shot.image} set={(image) => setShot({ image })} />
       {model.outer && (
-        <label>
-          {shotLabel('Outer screenshot (shown when closed)', own?.outerImage)}
-          <input
-            type="file"
-            accept="image/*"
-            onChange={async (e) => {
-              const f = e.target.files?.[0]
-              if (f) setShot({ outerImage: await loadImage(f) })
-            }}
-          />
-        </label>
+        <ShotPicker label={shotLabel('Outer screenshot (shown when closed)', own?.outerImage)} image={own?.outerImage ?? shot.outerImage} set={(outerImage) => setShot({ outerImage })} />
       )}
       <label>
         Device
@@ -624,28 +724,27 @@ function SlideInspector({ sel, device, text, lang, placeholder, setText, index, 
           <input type="range" min={0} max={180} value={pose.fold} onChange={(e) => setDevice({ fold: +e.target.value })} />
         </label>
       )}
-      <label>
-        Layout
-        <select value={sel.layout} onChange={(e) => update({ layout: e.target.value as Slide['layout'] })}>
-          <option value="text-top">Text on top</option>
-          <option value="text-bottom">Text at bottom</option>
-        </select>
-      </label>
-      <div className="row">
-        <label>Background<input type="color" value={sel.bg1} onChange={(e) => update({ bg1: e.target.value })} /></label>
-        <label>&nbsp;<input type="color" value={sel.bg2} onChange={(e) => update({ bg2: e.target.value })} /></label>
-        <label>Text<input type="color" value={sel.textColor} onChange={(e) => update({ textColor: e.target.value })} /></label>
-      </div>
-      <label>
-        Gradient angle · {sel.angle}°
-        <input type="range" min={0} max={360} value={sel.angle} onChange={(e) => update({ angle: +e.target.value })} />
-      </label>
-      <div className="row">
-        <button onClick={() => move(-1)} disabled={index === 0} title="Move slide left">← Move</button>
-        <button onClick={() => move(1)} disabled={index === count - 1} title="Move slide right">Move →</button>
-        <button className="danger" onClick={remove} disabled={count === 1}>Delete slide</button>
-      </div>
-    </div>
+      <label><input type="checkbox" checked={pose.shadow !== false} onChange={(e) => setDevice({ shadow: e.target.checked })} />Shadow</label>
+      <label><input type="checkbox" checked={pose.reflections !== false} onChange={(e) => setDevice({ reflections: e.target.checked })} />Reflections</label>
+    </>
+  )
+}
+
+/** A screenshot slot: shows the one set (it survives reloads, unlike a file input's name) and opens a picker for another. */
+function ShotPicker({ label, image, set }: { label: React.ReactNode; image: HTMLImageElement | null; set: (img: HTMLImageElement) => void }) {
+  const input = useRef<HTMLInputElement>(null)
+  return (
+    <label>
+      {label}
+      <button type="button" className="shot-picker" onClick={() => input.current!.click()}>
+        {image ? <><img src={image.src} alt="" />Replace…</> : 'Choose image…'}
+      </button>
+      <input ref={input} type="file" accept={IMAGE_TYPES} hidden onChange={async (e) => {
+        const f = e.target.files?.[0]
+        e.target.value = ''
+        if (f) set(await loadImage(f))
+      }} />
+    </label>
   )
 }
 

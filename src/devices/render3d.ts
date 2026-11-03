@@ -16,6 +16,8 @@ export interface DevicePose {
   x: number // offset of the device centre, fraction of slide width
   y: number // offset of the device centre, fraction of slide height
   size: number // device width as a fraction of the slide width
+  shadow?: boolean // drop shadow on the slide; on unless false
+  reflections?: boolean // glossy frame, back and glass; matte when false
 }
 
 const { PI } = Math
@@ -52,6 +54,7 @@ interface Built {
   back: THREE.MeshPhysicalMaterial
   screen: THREE.MeshBasicMaterial
   outerScreen: THREE.MeshBasicMaterial
+  glossy: THREE.MeshPhysicalMaterial[] // the materials reflections can be turned off on
 }
 
 function build(m: DeviceModel): Built {
@@ -202,7 +205,9 @@ function build(m: DeviceModel): Built {
     deck(-W * 0.24, L * 0.57, W * 0.24, L * 0.95, 4, new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.08 })) // trackpad
   }
 
-  return { root, halves: m.fold ? [left, right] : [], base, frame, back, screen, outerScreen }
+  const glossy = [frame, back, glass, lensGlass]
+  for (const g of glossy) g.userData = { roughness: g.roughness, clearcoat: g.clearcoat }
+  return { root, halves: m.fold ? [left, right] : [], base, frame, back, screen, outerScreen, glossy }
 }
 
 // ---- shared renderer, built lazily -------------------------------------------------
@@ -280,6 +285,10 @@ export function renderDevice(
   const finish = m.finishes.find((f) => f.id === pose.finish) ?? m.finishes[0]
   b.frame.color.set(finish.frame)
   b.back.color.set(finish.back)
+  for (const g of b.glossy) {
+    g.roughness = pose.reflections === false ? 1 : g.userData.roughness
+    g.clearcoat = pose.reflections === false ? 0 : g.userData.clearcoat
+  }
   const tex = textureFor(image)
   cover(tex, m.screen.width / m.screen.height)
   b.screen.map = tex

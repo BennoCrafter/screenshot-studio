@@ -1,8 +1,9 @@
 // The MCP tools: each reads or changes the live project through the Host.
 
 import { DEVICES, DEVICE_BY_ID } from './devices/models'
-import { deleteProject, LANGUAGES, languagesOf, listProjects, loadImage, typeOfName, type Project } from './project'
-import { localize, PLATFORMS, renderSlide, SIZES, THEMES, type Item, type Style, type Platform, type Slide, type Target } from './render'
+import { deleteProject, fontFamily, fontFrom, LANGUAGES, languagesOf, listProjects, loadImage, typeOfName, type Project } from './project'
+import { FONTS, layersOf, localize, PLATFORMS, renderSlide, SIZES, THEMES, type Item, type Style, type Platform, type Slide, type Target } from './render'
+import { labelOf } from './elements'
 import type { DevicePose } from './devices/render3d'
 import { ALL_PLATFORMS, BLANK, BUILT_IN, loadCustom, loadThemes, poseFor, saveTheme, toTarget } from './templates'
 import type { Host } from './agent'
@@ -38,7 +39,7 @@ function slideAt(t: Target, index: number) {
 
 const withSlides = (p: Project, t: Target, slides: Slide[]): Project => ({ ...p, targets: p.targets.map((x) => (x === t ? { ...t, slides } : x)) })
 
-const listing = (slides: Slide[]) => text(slides.map((s, i) => `${i}: ${s.title}`).join('\n'))
+const listing = (slides: Slide[]) => text(slides.map((s, i) => `${i}: ${labelOf(s)}`).join('\n'))
 
 const templates = async () => [...BUILT_IN, ...(await loadCustom())]
 
@@ -47,6 +48,7 @@ const describe = (p: Project) => ({
   id: p.id,
   name: p.name,
   languages: languagesOf(p),
+  fonts: p.fonts?.map((f) => ({ name: f.name, font: fontFamily(f.name) })),
   targets: p.targets.map((t) => ({
     ...t,
     slides: t.slides.map((s) => ({
@@ -68,22 +70,24 @@ async function reference() {
       ...(d.fold && { foldable: true }), ...(d.laptop && { laptop: true }), ...(d.outer && { outerScreen: true }),
     })),
     themes: await loadThemes(),
+    fonts: FONTS,
     languages: LANGUAGES,
     templates: (await templates()).map((t) => ({ id: t.id, name: t.name, description: t.description, platforms: Object.keys(t.targets) })),
   }
 }
 
-/** An image from a local path or a web URL (fetched natively, so other sites' CORS rules don't apply). */
-async function imageFrom(path: string) {
+/** A file from a local path or a web URL (fetched natively, so other sites' CORS rules don't apply). */
+async function fileFrom(path: string) {
   if (/^https?:\/\//.test(path)) {
     const { fetch } = await import('@tauri-apps/plugin-http')
     const res = await fetch(path)
     if (!res.ok) throw new Error(`Couldn't download ${path}: HTTP ${res.status}`)
-    return loadImage(await res.blob()).catch(() => { throw new Error(`${path} isn't an image`) })
+    return res.blob()
   }
   const { readFile } = await import('@tauri-apps/plugin-fs')
-  return loadImage(new Blob([await readFile(path)], { type: typeOfName(path) }))
+  return new Blob([await readFile(path)], { type: typeOfName(path) })
 }
+const imageFrom = async (path: string) => loadImage(await fileFrom(path)).catch(() => { throw new Error(`${path} isn't an image`) })
 
 /** A screenshot from the agent: a path/URL loads it, false/null removes it, anything else keeps the old one. */
 const imageOr = async (v: unknown, kept: HTMLImageElement | null | undefined) =>
@@ -113,8 +117,8 @@ async function slideFrom(platform: Platform, s: Json, was: Slide | undefined): P
       device: i.kind === 'device' ? poseFor(platform, i.device as Partial<DevicePose>) : undefined,
     }
   }
-  return {
-    ...THEMES.Paper, title: '', subtitle: '', ...was, ...(s as Partial<Slide>),
+  const slide: Slide = {
+    ...THEMES.Paper, ...was, ...(s as Partial<Slide>),
     id: was?.id ?? crypto.randomUUID(),
     device,
     image: await imageOr(s.image, was?.image),
@@ -124,6 +128,9 @@ async function slideFrom(platform: Platform, s: Json, was: Slide | undefined): P
       : was?.translations,
     items: Array.isArray(s.items) ? await Promise.all((s.items as Json[]).map(item)) : was?.items,
   }
+  // items not yet stacked go in front, so a new text shows without listing it in layers
+  const layers = layersOf(slide)
+  return { ...slide, layers: [...layers, ...(slide.items ?? []).map((i) => i.id).filter((id) => !layers.includes(id))] }
 }
 
 /** Rebuilds the project from the agent's JSON, filling in defaults and loading screenshots from paths. */
@@ -150,12 +157,12 @@ async function fromAgent(prev: Project, input: Json): Promise<Project> {
   }
 }
 
-function applyTheme(host: Host, { bg1, bg2, angle, textColor, layout }: Style, platform?: string) {
+function applyTheme(host: Host, { bg1, bg2, angle, textColor }: Style, platform?: string) {
   const p = current(host)
   if (platform) targetOf(p, platform)
   host.setProject({
     ...p,
-    targets: p.targets.map((t) => (platform && t.platform !== platform ? t : { ...t, slides: t.slides.map((s) => ({ ...s, bg1, bg2, angle, textColor, layout })) })),
+    targets: p.targets.map((t) => (platform && t.platform !== platform ? t : { ...t, slides: t.slides.map((s) => ({ ...s, bg1, bg2, angle, textColor })) })),
   })
 }
 
@@ -172,7 +179,7 @@ const platformArg = { type: 'string', enum: ALL_PLATFORMS, description: 'Default
 export const TOOLS: { name: string; description: string; inputSchema: Json; run: (host: Host, a: Json) => Promise<Content[]> }[] = [
   {
     name: 'get_state',
-    description: 'The open project (or null), recent projects, and the reference data: platforms and their pixel sizes, device models and finishes, colour themes and templates. Call this first. Screenshots show as true/false.',
+    description: 'The open project (or null), recent projects, and the reference data: platforms and their pixel sizes, device models and finishes, color themes and templates. Call this first. Screenshots show as true/false.',
     inputSchema: { type: 'object', properties: {} },
     run: async (host) => text({
       openProject: host.project() && describe(host.project()!),
@@ -183,9 +190,9 @@ export const TOOLS: { name: string; description: string; inputSchema: Json; run:
   {
     name: 'update_project',
     description: `Replace the open project's name and targets with the given JSON, in the shape get_state returns. The app updates live and autosaves.
-languages: App Store language codes; the first is the primary. Each target: { platform, size, slides }. Each slide: { id?, title, subtitle, bg1, bg2 (hex), angle (gradient degrees), textColor, layout: "text-top" | "text-bottom", titleBox?, subtitleBox? ({ x, y: offset from the layout spot as a fraction of slide width/height, scale: 1 = default size, rotation?: degrees clockwise }), layers? (what's on the slide, back to front: "title", "subtitle", "device" and item ids; leaving one out deletes it), items? (added objects: { id?, kind: "text" | "rect" | "ellipse" | "image" | "device", x, y: centre as fractions of slide width/height, w, h: fractions of slide width, size?: text font size as a fraction of slide width, text?, rotation?: degrees clockwise (not devices), color?, image?, device? (a device pose like the slide's; its size is a fraction of slide width), outerImage? }; to show one it must also be in layers by id; translations[lang].items maps item ids to translated text), device, image?, outerImage? }.
-device: { model, finish, size (device width / slide width, ~0.3-1.2), yaw, pitch, roll (degrees), fold (degrees; 180 flat, 0 closed; foldables and Mac lid), x, y (offset as fraction of slide width/height) }. Omitted fields keep their value for an existing slide id, or get defaults.
-Slide title/subtitle are the primary language's text; translations: { "<code>": { title, subtitle, items?, shots? } } holds the other languages'. shots: { "device" or a device item's id: { image?, outerImage? } } gives that language its own screenshots (same values as image above; omitted ones keep what's there, and a language without one shows the primary language's). Everything else is shared by all languages.
+languages: App Store language codes; the first is the primary. Each target: { platform, size, slides }. Each slide: { id?, bg1, bg2 (hex), angle (gradient degrees), textColor (for texts without their own color), layers? (what's on the slide, back to front: "device" and item ids; leaving one out deletes it; new items go in front), items? (texts and other objects: { id?, kind: "text" | "rect" | "ellipse" | "image" | "device", x, y: centre as fractions of slide width/height, w, h: fractions of slide width (a text wraps at w), size?: text font size as a fraction of slide width (a headline is ~0.085, a subtitle ~0.042), font?: text CSS font family (default the system font; get_state lists the built-in ones under reference.fonts and the project's own under fonts; add_font adds one), weight?: text font weight (default 600; headlines 800, subtitles 500), opacity?: text, 0-1, text?, rotation?: degrees clockwise (not devices), color?, image?, device? (a device pose like the slide's; its size is a fraction of slide width), outerImage? }), device, image?, outerImage? }. Headlines and subtitles are just text items.
+device: { model, finish, size (device width / slide width, ~0.3-1.2), yaw, pitch, roll (degrees), fold (degrees; 180 flat, 0 closed; foldables and Mac lid), x, y (offset of its centre from the slide's middle, as fraction of slide width/height), shadow?, reflections? (false turns off the drop shadow / glossy reflections) }. Omitted fields keep their value for an existing slide id, or get defaults.
+Item text is the primary language's; translations: { "<code>": { items?: { <text item id>: text }, shots? } } holds the other languages'. shots: { "device" or a device item's id: { image?, outerImage? } } gives that language its own screenshots (same values as image above; omitted ones keep what's there, and a language without one shows the primary language's). Everything else is shared by all languages.
 image / outerImage: true keeps the current screenshot, false removes it, a string is an absolute path or an http(s) URL of a PNG, JPEG, WebP or SVG to load. Slide order is array order; omit a slide to delete it, omit id to add one.`,
     inputSchema: {
       type: 'object',
@@ -240,7 +247,7 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
   },
   {
     name: 'save_theme',
-    description: 'Save a colour theme of your own; it shows in the app\'s Themes dialog and can be applied with apply_theme. Saving under an existing name of your own replaces it.',
+    description: 'Save a color theme of your own; it shows in the app\'s Themes dialog and can be applied with apply_theme. Saving under an existing name of your own replaces it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -249,15 +256,14 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
         bg2: { type: 'string', description: 'Gradient end, hex' },
         angle: { type: 'number', description: 'Gradient direction in degrees; 180 is top to bottom' },
         textColor: { type: 'string', description: 'Hex' },
-        layout: { type: 'string', enum: ['text-top', 'text-bottom'] },
         apply: { type: 'boolean', description: 'Also apply it to every slide of the open project. Default false.' },
       },
       required: ['name', 'bg1', 'bg2', 'textColor'],
     },
     run: async (host, a) => {
       const hex = /^#[0-9a-f]{6}$/i
-      for (const k of ['bg1', 'bg2', 'textColor']) if (!hex.test(a[k] as string)) throw new Error(`${k} must be a hex colour like #1e3a8a`)
-      const t = { name: String(a.name).trim(), bg1: a.bg1 as string, bg2: a.bg2 as string, angle: (a.angle as number) ?? 180, textColor: a.textColor as string, layout: (a.layout ?? 'text-top') as Style['layout'] }
+      for (const k of ['bg1', 'bg2', 'textColor']) if (!hex.test(a[k] as string)) throw new Error(`${k} must be a hex color like #1e3a8a`)
+      const t = { name: String(a.name).trim(), bg1: a.bg1 as string, bg2: a.bg2 as string, angle: (a.angle as number) ?? 180, textColor: a.textColor as string }
       if (!t.name) throw new Error('name is empty')
       await saveTheme(t)
       if (a.apply) applyTheme(host, t)
@@ -266,7 +272,7 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
   },
   {
     name: 'apply_theme',
-    description: 'Apply a theme (built-in or saved, by name from get_state) to every slide of the open project, or of one platform. Changes only colours and text position.',
+    description: 'Apply a theme (built-in or saved, by name from get_state) to every slide of the open project, or of one platform. Changes only the colors.',
     inputSchema: { type: 'object', properties: { name: { type: 'string' }, platform: { ...platformArg, description: 'Omit for all platforms.' } }, required: ['name'] },
     run: async (host, a) => {
       const themes = await loadThemes()
@@ -297,6 +303,25 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
         }
       }
       return text(written)
+    },
+  },
+  {
+    name: 'add_font',
+    description: 'Add a font file (TTF, OTF, WOFF or WOFF2) to the open project, from an absolute path or an http(s) URL, e.g. a raw file from github.com/google/fonts. A font of the same name is replaced. Then set a text item\'s font to the returned value with update_project. The font is saved with the project.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source: { type: 'string', description: 'Absolute path or http(s) URL of the font file' },
+        name: { type: 'string', description: 'Font name; default the file name without extension' },
+      },
+      required: ['source'],
+    },
+    run: async (host, a) => {
+      const p = current(host), source = String(a.source)
+      const name = typeof a.name === 'string' && a.name.trim() ? a.name : decodeURIComponent(source.split(/[?#]/)[0].split('/').pop() ?? '').replace(/\.[^.]+$/, '')
+      const font = await fontFrom(await fileFrom(source), name)
+      host.setProject({ ...p, fonts: [...(p.fonts ?? []).filter((f) => f.name !== font.name), font] })
+      return text(`Added the font ${font.name}. Use it on a text item with "font": ${JSON.stringify(fontFamily(font.name))}`)
     },
   },
   {

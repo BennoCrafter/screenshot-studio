@@ -152,7 +152,7 @@ function Chooser({ onCancel, onCreate }: { onCancel: () => void; onCreate: (p: P
         <fieldset>
           <legend>Platforms</legend>
           {ALL_PLATFORMS.map((p) => (
-            <label key={p} className="check">
+            <label key={p}>
               <input
                 type="checkbox"
                 disabled={!available.includes(p)}

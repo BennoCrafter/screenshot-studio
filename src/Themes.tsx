@@ -3,10 +3,10 @@ import { ask } from './native'
 import type { Style } from './render'
 import { deleteTheme, loadThemes, saveTheme, type Theme } from './templates'
 
-/** A theme as a tiny slide: its gradient, a headline where the layout puts it, and a phone. */
+/** A theme as a tiny slide: its gradient, a headline and a phone. */
 function Preview({ t, title }: { t: Style; title: string }) {
   return (
-    <div className={`theme-preview ${t.layout}`} style={{ background: `linear-gradient(${t.angle}deg, ${t.bg1}, ${t.bg2})`, color: t.textColor }}>
+    <div className="theme-preview" style={{ background: `linear-gradient(${t.angle}deg, ${t.bg1}, ${t.bg2})`, color: t.textColor }}>
       <b>{title}</b>
       <i style={{ borderColor: t.textColor }} />
     </div>
@@ -32,7 +32,7 @@ export function Themes({ current, title, onApply }: { current: Style; title: str
     setDraft(null)
     pick(t)
   }
-  const { bg1, bg2, angle, textColor, layout } = current
+  const { bg1, bg2, angle, textColor } = current
 
   return (
     <>
@@ -56,22 +56,15 @@ export function Themes({ current, title, onApply }: { current: Style; title: str
                 Gradient angle · {draft.angle}°
                 <input type="range" min={0} max={360} value={draft.angle} onChange={(e) => setDraft({ ...draft, angle: +e.target.value })} />
               </label>
-              <label>
-                Text position
-                <select value={draft.layout} onChange={(e) => setDraft({ ...draft, layout: e.target.value as Style['layout'] })}>
-                  <option value="text-top">Above the device</option>
-                  <option value="text-bottom">Below the device</option>
-                </select>
-              </label>
               <button type="submit" className="primary" disabled={!draft.name.trim()}>Save and apply</button>
               <p className="hint">Saving under an existing name of your own replaces it.</p>
             </div>
           </form>
         ) : (
           <>
-            <p className="hint">Applies to every slide on this platform. Only the colours and text position change.</p>
+            <p className="hint">Applies to every slide on this platform. Only the colors change.</p>
             <div className="theme-grid">
-              <button className="theme-card new" onClick={() => setDraft({ name: '', bg1, bg2, angle, textColor, layout })}>
+              <button className="theme-card new" onClick={() => setDraft({ name: '', bg1, bg2, angle, textColor })}>
                 <span>+</span>New theme<small>from this slide</small>
               </button>
               {themes.map((t) => (

@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { DEVICE_BY_ID, restFold } from './devices/models'
 import type { DevicePose } from './devices/render3d'
-import { loadImage } from './project'
+import { IMAGE_TYPES, loadImage } from './project'
 import { shotOf, type Shot } from './elements'
-import { drawSlide, FONT, layersOf, type Anchor, type Part, type Slide } from './render'
+import { drawSlide, layersOf, type Anchor, type Part, type Slide } from './render'
 
 const wrap180 = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
@@ -29,7 +29,7 @@ type Rect = { x: number; y: number; w: number; h: number }
 
 // Same model as open-screenshot-generator: dragging the device moves it, the round grip
 // in its middle turns it like a turntable, a foldable's second grip folds it. Shift snaps to 15°.
-// Every other element (headline, subtitle, added objects): drag to move, corners to resize, double-click
+// Every other element (texts, shapes, images): drag to move, corners to resize, double-click
 // a text to type right on the slide; all but devices get a knob on top to rotate them. Moving snaps
 // to the slide's middle and edges and to other elements' middles and edges, like Canva; Alt moves freely.
 // Dropping onto another slide moves the elements there. Each element gets a hit area stacked in layer order, so the frontmost wins.
@@ -219,7 +219,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
     e.preventDefault()
     const file = e.dataTransfer.files[0]
     const part = (e.target as HTMLElement).dataset.part ?? 'device'
-    if (!file?.type.startsWith('image/') || !anchor?.anchors[part]?.dev || !layersOf(slide).includes(part)) return
+    if (!file || !IMAGE_TYPES.split(',').includes(file.type) || !anchor?.anchors[part]?.dev || !layersOf(slide).includes(part)) return
     const img = await loadImage(file)
     const shot = shotOf(slide, part)
     onShot(part, DEVICE_BY_ID[shot.device.model]?.outer && shot.device.fold < 90 ? { outerImage: img } : { image: img })
@@ -329,7 +329,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
   )
 }
 
-const textOf = (s: Slide, p: Part) => (p === 'title' || p === 'subtitle' ? s[p] : s.items?.find((i) => i.id === p)?.text ?? '')
+const textOf = (s: Slide, p: Part) => s.items?.find((i) => i.id === p)?.text ?? ''
 
 /** Text typed right on the slide, in the slide's own font, while the canvas leaves that text out. */
 function TextEditor({ at, scale, size, text, onChange, onDone }: {
@@ -360,7 +360,7 @@ function TextEditor({ at, scale, size, text, onChange, onDone }: {
         left: `${((t.cx - t.wrap / 2) / size[0]) * 100}%`,
         top: `${((at.y - t.size * 0.075) / size[1]) * 100}%`,
         width: `${(t.wrap / size[0]) * 100}%`,
-        font: `${t.weight} ${t.size * scale}px/1.15 ${FONT}`,
+        font: `${t.weight} ${t.size * scale}px/1.15 ${t.font}`,
         color: t.color,
         opacity: t.alpha,
         rotate: at.rotation ? `${at.rotation}deg` : undefined,

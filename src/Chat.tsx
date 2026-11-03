@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { MCP_URL } from './agent'
 import { APPROVE_TOOL, onApproval, type Approval } from './tools'
 import { extOfType } from './project'
-import { openSettings } from './Settings'
+import { claudeLinked, openSettings, storedOthers } from './Settings'
+import { EFFORTS, MODELS, MODES, useStored } from './prefs'
 
 // Chat with an AI agent, run by the desktop app (currently the `claude` CLI) and connected to this
 // app's MCP server, so it can change the project while you watch.
@@ -10,12 +11,7 @@ import { openSettings } from './Settings'
 type Item = { role: 'user' | 'assistant' | 'tool' | 'error'; text: string; images?: string[]; id?: string; input?: string; result?: string; failed?: boolean }
 type Attachment = { blob: Blob; url: string }
 
-const SYSTEM = 'You are the assistant inside Screenshot Studio, a desktop app for App Store screenshots. Use the screenshot-studio tools to look at and change what the user sees: call get_state first, edit with update_project, and check your work with render_slide. To translate, add language codes to the project\'s languages and fill each slide\'s translations; write natural, short store copy rather than word-for-word. Images the user attaches are listed as file paths: look at them with Read, and put them on slides by giving the path as a slide\'s image. You can also find images on the web (WebSearch, WebFetch) and give their URL instead of a path; the app downloads it. Screenshots can differ per language: when the user gives screenshots for a language (say German UI), put them in that slide\'s translations[code].shots.device.image instead of image, which is the primary language\'s and the fallback for every other language. Keep replies short.'
-
-// The agent's permission modes. Anything a mode doesn't allow on its own comes to the chat for Allow / Deny.
-const MODES = { manual: 'Ask every time', acceptEdits: 'Auto-accept edits', auto: 'Auto', bypassPermissions: 'Allow everything' }
-const MODELS = { '': 'Default model', fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku' }
-const EFFORTS = { '': 'Default effort', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' }
+const SYSTEM = 'You are the assistant inside Screenshot Studio, a desktop app for App Store screenshots. Use the screenshot-studio tools to look at and change what the user sees: call get_state first, edit with update_project, and check your work with render_slide. To translate, add language codes to the project\'s languages and fill each slide\'s translations; write natural, short store copy rather than word-for-word. Images the user attaches are listed as file paths: look at them with Read, and put them on slides by giving the path as a slide\'s image. You can also find images on the web (WebSearch, WebFetch) and give their URL instead of a path; the app downloads it. The same goes for fonts: add_font takes the path or URL of a font file. Screenshots can differ per language: when the user gives screenshots for a language (say German UI), put them in that slide\'s translations[code].shots.device.image instead of image, which is the primary language\'s and the fallback for every other language. Keep replies short.'
 
 /** `**bold**` and `code` within a line. */
 const inline = (s: string) => s.split(/(\*\*[^*]+\*\*|`[^`]+`)/).map((p, i) =>
@@ -74,13 +70,6 @@ const EXAMPLES = ['Make three iPhone slides about offline sync', 'Translate ever
 /** The interesting bit of a tool call: the command, URL or query, else its input. */
 const summary = ({ input }: Approval) => String(input.command ?? input.url ?? input.query ?? input.file_path ?? JSON.stringify(input))
 
-/** A setting remembered between launches. */
-function useStored<T extends string>(key: string, initial: T) {
-  const [v, setV] = useState<T>(() => { try { return (localStorage.getItem(key) as T | null) ?? initial } catch { return initial } })
-  useEffect(() => { try { localStorage.setItem(key, v) } catch { /* not remembered */ } }, [key, v])
-  return [v, setV] as const
-}
-
 /** Writes attachments into the app data folder, so the agent can read them by path. */
 async function saveAttachments(files: Attachment[]) {
   const { BaseDirectory, mkdir, writeFile } = await import('@tauri-apps/plugin-fs')
@@ -131,8 +120,8 @@ export function Chat({ hidden }: { hidden: boolean }) {
 
   // stream-json lines from the running agent
   useEffect(() => {
-    let off: (() => void) | undefined
-    import('@tauri-apps/api/event').then(({ listen }) =>
+    // unlisten once listening has started, even if unmounted before that (StrictMode mounts twice): a leaked listener shows every line twice
+    const off = import('@tauri-apps/api/event').then(({ listen }) =>
       listen<string>('agent-line', ({ payload }) => {
         let ev
         try {
@@ -158,8 +147,8 @@ export function Chat({ hidden }: { hidden: boolean }) {
         }
         if (ev.type === 'result' && ev.is_error) add({ role: 'error', text: ev.result ?? ev.subtype })
       }),
-    ).then((u) => (off = u))
-    return () => off?.()
+    )
+    return () => void off.then((f) => f())
   }, [])
 
   const send = async (text = input) => {
@@ -202,6 +191,19 @@ export function Chat({ hidden }: { hidden: boolean }) {
     await (await import('@tauri-apps/api/core')).invoke('agent_stop')
   }
 
+  // who else can use the app's MCP server: rechecked when the setting changes or the app comes back to the front
+  const [mcp, setMcp] = useState<'off' | 'checking' | 'linked' | 'open'>('checking')
+  useEffect(() => {
+    const check = async () => setMcp(!storedOthers() ? 'off' : (await claudeLinked()) ? 'linked' : 'open')
+    check()
+    window.addEventListener('mcp-changed', check)
+    window.addEventListener('focus', check)
+    return () => {
+      window.removeEventListener('mcp-changed', check)
+      window.removeEventListener('focus', check)
+    }
+  }, [])
+
   return (
     <div
       className={`chat ${over ? 'dropping' : ''}`}
@@ -211,8 +213,13 @@ export function Chat({ hidden }: { hidden: boolean }) {
       onDrop={(e) => { e.preventDefault(); setOver(false); attach(e.dataTransfer.files) }}
     >
       <header className="chat-head">
-        <button className="chat-status" onClick={openSettings} title="Any MCP client (Claude Code, Codex, Cursor…) can use this app too. Open Settings to connect one.">
-          <i />Connect other MCP clients
+        <button className={`chat-status ${mcp === 'linked' ? 'ok' : mcp}`} onClick={openSettings} title={{
+          off: 'Only this app\'s agent can use it. Turn on other MCP clients in Settings.',
+          checking: 'Checking…',
+          linked: 'Claude Code in the terminal can see and change your project. Other clients connect in Settings.',
+          open: 'Any MCP client (Claude Code, Codex, Cursor…) can use this app too. Open Settings to connect one.',
+        }[mcp]}>
+          <i />{{ off: 'Other MCP clients off', checking: 'Checking…', linked: 'Connected to Claude Code', open: 'Connect other MCP clients' }[mcp]}
         </button>
         <button onClick={() => { session.current = null; setItems([]) }} disabled={busy || !items.length} title="Start a new conversation">New chat</button>
       </header>

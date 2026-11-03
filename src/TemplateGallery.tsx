@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { PLATFORMS, type Platform } from './render'
+import { layersOf, PLATFORMS, type Platform } from './render'
 import { loadCustom, saveCustom, type Template } from './templates'
 
-/** A template tile: its first slides as colour swatches, plus name and platforms. */
+/** A template tile: its first slides as color swatches, plus name and platforms. */
 export function TemplateCard({ t, platform, selected, onPick, onDelete }: {
   t: Template
   platform?: Platform
@@ -17,7 +17,7 @@ export function TemplateCard({ t, platform, selected, onPick, onDelete }: {
       <button className={wide ? 'tpl-preview wide' : 'tpl-preview'} onClick={onPick}>
         {shown.slides.slice(0, wide ? 2 : 4).map((s, i) => (
           <span key={i} style={{ background: `linear-gradient(${s.angle}deg, ${s.bg1}, ${s.bg2})`, color: s.textColor }}>
-            {s.title}
+            {layersOf(s).map((p) => s.items?.find((i) => i.id === p && i.kind === 'text')?.text).find(Boolean)}
           </span>
         ))}
       </button>

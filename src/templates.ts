@@ -1,11 +1,11 @@
-// Templates describe a project per platform: canvas size plus each slide's text, colours,
-// layout and device pose, and optionally its screenshots and images (as data URLs).
+// Templates describe a project per platform: canvas size plus each slide's colors, texts and other
+// items, and device pose, and optionally its screenshots and images (as data URLs).
 
 import { DEVICE_BY_ID, restFold } from './devices/models'
-import type { DevicePose } from './devices/render3d'
+import { renderDevice, type DevicePose } from './devices/render3d'
 import { isDesktop } from './native'
 import { imageUrl, loadImage, toDataUrl } from './project'
-import { PLATFORMS, THEMES, type Item, type Platform, type SizeName, type Slide, type Style, type Target } from './render'
+import { FONT, PLATFORMS, SIZES, THEMES, wrap, type Item, type Platform, type SizeName, type Slide, type Style, type Target } from './render'
 
 type Shot = string | null // a screenshot or image as a data URL, in templates that keep them
 export type SlideData = Omit<Slide, 'id' | 'image' | 'outerImage' | 'translations' | 'items'> & {
@@ -43,7 +43,34 @@ interface Spec {
   style: Style
   title: string
   subtitle: string
-  pose?: Partial<DevicePose>
+  below?: boolean // words under the device instead of over it
+  pose?: Partial<DevicePose> // y nudges the device from where the words leave room for it
+}
+
+let measure: CanvasRenderingContext2D | undefined
+
+/** A built-in slide: a headline and subtitle stacked at the top (or bottom), the device filling the rest. */
+function slide(platform: Platform, sizeName: SizeName, { style, title, subtitle, below, pose }: Spec): SlideData {
+  const [w, h] = SIZES[sizeName]
+  const unit = Math.min(w, h * 0.8) // portrait sizes by width; landscape (Mac) is held back by height
+  const pad = h * 0.06, gap = unit * 0.025
+  const ctx = (measure ??= document.createElement('canvas').getContext('2d')!)
+  const block = (text: string, px: number, weight: number) => {
+    ctx.font = `${weight} ${px}px ${FONT}`
+    return wrap(ctx, text, w * 0.84).length * px * 1.15
+  }
+  const tH = block(title, unit * 0.085, 800), sH = block(subtitle, unit * 0.042, 500)
+  const top = below ? h - pad - tH - gap - sH : pad
+  const text = (t: string, px: number, weight: number, y: number, tall: number) =>
+    ({ id: crypto.randomUUID(), kind: 'text' as const, text: t, x: 0.5, y: (y + tall / 2) / h, w: 0.84, h: 0, size: px / w, weight })
+  const head = text(title, unit * 0.085, 800, top, tH)
+  const sub = { ...text(subtitle, unit * 0.042, 500, top + tH + gap, sH), opacity: 0.85 }
+  const device = poseFor(platform, pose)
+  const m = DEVICE_BY_ID[device.model]
+  // a laptop's shape depends so much on its lid that it's measured as drawn
+  const tall = m.laptop ? renderDevice(device, null, null, device.size * w).height : (m.height / m.width) * device.size * w
+  const devTop = below ? top - pad * 0.8 - tall : top + tH + gap + sH + pad * 0.8
+  return { ...style, device: { ...device, y: device.y + (devTop + tall / 2) / h - 0.5 }, items: [head, sub], layers: [head.id, sub.id, 'device'] }
 }
 
 /** One design, laid out for each platform it supports. */
@@ -51,22 +78,14 @@ function design(id: string, name: string, description: string, specs: Spec[], pl
   perPlatform: Partial<Record<Platform, Partial<DevicePose>>> = {}): Template {
   const targets: Template['targets'] = {}
   for (const platform of platforms) {
-    targets[platform] = {
-      platform,
-      size: PLATFORMS[platform].sizes[0],
-      slides: specs.map((s) => ({
-        ...s.style,
-        title: s.title,
-        subtitle: s.subtitle,
-        device: poseFor(platform, { ...s.pose, ...perPlatform[platform] }),
-      })),
-    }
+    const size = PLATFORMS[platform].sizes[0]
+    targets[platform] = { platform, size, slides: specs.map((s) => slide(platform, size, { ...s, pose: { ...s.pose, ...perPlatform[platform] } })) }
   }
   return { id, name, description, targets }
 }
 
 export const BLANK = design('blank', 'Blank', 'One empty slide to start from.', [
-  { style: THEMES.Paper, title: 'Your headline here', subtitle: 'A short line that explains the benefit' },
+  { style: THEMES.Paper, below: true, title: 'Your headline here', subtitle: 'A short line that explains the benefit' },
 ])
 
 export const BUILT_IN: Template[] = [
@@ -81,13 +100,13 @@ export const BUILT_IN: Template[] = [
     { style: THEMES.Sunrise, title: 'Find it again', subtitle: 'Search that just works', pose: { yaw: 24, roll: 6 } },
     { style: THEMES.Sunrise, title: 'Works offline', subtitle: 'Your notes, wherever you are', pose: { yaw: -24, roll: -6 } },
   ], ALL_PLATFORMS, { iphone: { pitch: -8, finish: 'burgundy' }, ipad: { pitch: -8 } }),
-  design('below', 'Text below', 'Calm colours, device on top, words underneath.', [
-    { style: { ...THEMES.Mint, layout: 'text-bottom' }, title: 'Breathe easier', subtitle: 'Two minutes a day', pose: { y: 0.1 } },
-    { style: { ...THEMES.Mint, layout: 'text-bottom' }, title: 'Sleep better', subtitle: 'Wind down with guided sounds', pose: { y: 0.1 } },
+  design('below', 'Text below', 'Calm colors, device on top, words underneath.', [
+    { style: THEMES.Mint, below: true, title: 'Breathe easier', subtitle: 'Two minutes a day', pose: { y: 0.1 } },
+    { style: THEMES.Mint, below: true, title: 'Sleep better', subtitle: 'Wind down with guided sounds', pose: { y: 0.1 } },
   ], ALL_PLATFORMS, { iphone: { model: 'iphone-17-pro', finish: 'silver' }, mac: { finish: 'silver' } }),
   design('duo', 'iPhone Duo', 'Open and folded views of the foldable iPhone.', [
-    { style: THEMES.Ocean, title: 'Made for the big screen', subtitle: 'Two panes, side by side', pose: { model: 'iphone-duo', finish: 'night-sky', size: 0.9, fold: 150, yaw: -10, pitch: 6 } },
-    { style: THEMES.Ocean, title: 'Fold it away', subtitle: 'Everything on the outside too', pose: { model: 'iphone-duo', finish: 'night-sky', size: 1.2, fold: 0, yaw: -20, pitch: 4 } },
+    { style: THEMES.Ocean, below: true, title: 'Made for the big screen', subtitle: 'Two panes, side by side', pose: { model: 'iphone-duo', finish: 'night-sky', size: 0.9, fold: 150, yaw: -10, pitch: 6 } },
+    { style: THEMES.Ocean, below: true, title: 'Fold it away', subtitle: 'Everything on the outside too', pose: { model: 'iphone-duo', finish: 'night-sky', size: 1.2, fold: 0, yaw: -20, pitch: 4 } },
   ], ['duo']),
   // shared by the community: templates/*.json in the repo, added by the app's pull requests
   ...Object.values(import.meta.glob<Template>('../templates/*.json', { eager: true, import: 'default' })),
@@ -111,17 +130,22 @@ export async function toTarget(data: TargetData): Promise<Target> {
   }
 }
 
-/** A new platform's set copied from an existing one: same words and colours, that platform's device. */
+/** A new platform's set copied from an existing one: same words and colors, that platform's device. */
 export function adaptTarget(from: Target, platform: Platform): Target {
+  const size = PLATFORMS[platform].sizes[0]
+  // texts keep their size against the slide's short side, so a phone's headline isn't huge on a Mac
+  const unit = ([w, h]: readonly [number, number]) => Math.min(w, h * 0.8) / w
+  const k = unit(SIZES[size]) / unit(SIZES[from.size])
   return {
     platform,
-    size: PLATFORMS[platform].sizes[0],
+    size,
     slides: from.slides.map((s) => ({
       ...s,
       id: crypto.randomUUID(),
       image: null,
       outerImage: null,
       device: poseFor(platform, { yaw: s.device.yaw, roll: s.device.roll }),
+      items: s.items?.map((i) => (i.kind === 'text' ? { ...i, w: i.w * k, size: (i.size ?? 0.05) * k } : i)),
     })),
   }
 }
