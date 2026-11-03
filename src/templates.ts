@@ -243,6 +243,8 @@ export type Theme = Style & { name: string; custom?: true }
 
 export const loadThemes = async (): Promise<Theme[]> => [
   ...Object.entries(THEMES).map(([name, s]) => ({ name, ...s })),
+  // shared by the community: themes/*.json in the repo, added by the app's pull requests
+  ...Object.values(import.meta.glob<Theme>('../themes/*.json', { eager: true, import: 'default' })),
   ...(await list<Theme>('themes.json')).map((t) => ({ ...t, custom: true as const })),
 ]
 /** Adds or replaces (by name) one of the user's themes. */
