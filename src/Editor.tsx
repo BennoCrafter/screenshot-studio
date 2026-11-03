@@ -250,6 +250,8 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
   // duplicate, ⌘A picks every element, Delete removes the picked ones
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // fields apply as they change, so Enter just leaves the field; one in a form submits it instead
+      if (e.key === 'Enter' && e.target instanceof HTMLInputElement && !e.target.form) return e.target.blur()
       if (typing(e.target) || document.querySelector('dialog[open]')) return
       const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase()
       if (e.key === 'Escape') { selectSlide(null); setMenu(null) }
