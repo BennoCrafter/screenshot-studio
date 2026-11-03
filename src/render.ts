@@ -1,4 +1,6 @@
 import { renderDevice, type DevicePose } from './devices/render3d'
+import { drawShape, SHAPES } from './shapes'
+import builtinThemes from './builtin/themes.json'
 
 // One draw function for both preview and export, so what you see is exactly what you get.
 
@@ -66,13 +68,7 @@ export function localize(s: Slide, lang?: string): Slide {
 
 export type Style = Pick<Slide, 'bg1' | 'bg2' | 'angle' | 'textColor'>
 
-export const THEMES: Record<string, Style> = {
-  Midnight: { bg1: '#1e1b4b', bg2: '#4c1d95', angle: 160, textColor: '#ffffff' },
-  Sunrise: { bg1: '#fb923c', bg2: '#f43f5e', angle: 135, textColor: '#ffffff' },
-  Mint: { bg1: '#d1fae5', bg2: '#a7f3d0', angle: 180, textColor: '#064e3b' },
-  Paper: { bg1: '#fafaf9', bg2: '#e7e5e4', angle: 180, textColor: '#1c1917' },
-  Ocean: { bg1: '#0ea5e9', bg2: '#1e3a8a', angle: 200, textColor: '#ffffff' },
-}
+export const THEMES: Record<string, Style> = builtinThemes // the built-in themes live in builtin/themes.json
 
 export const SIZES = {
   'iPhone 6.9"': [1320, 2868],

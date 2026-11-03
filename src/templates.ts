@@ -3,9 +3,10 @@
 
 import { DEVICE_BY_ID, restFold } from './devices/models'
 import { renderDevice, type DevicePose } from './devices/render3d'
-import { isDesktop } from './native'
-import { imageUrl, loadImage, toDataUrl } from './project'
-import { FONT, PLATFORMS, SIZES, THEMES, wrap, type Item, type Platform, type SizeName, type Slide, type Style, type Target } from './render'
+import { isDesktop, openLink, saveFile } from './native'
+import { imageUrl, loadImage } from './project'
+import builtinTemplates from './builtin/templates.json'
+import { FONT, PLATFORMS, SIZES, sizeOf, THEMES, wrap, type Item, type Platform, type SizeName, type Slide, type Style, type Target } from './render'
 
 type Shot = string | null // a screenshot or image as a data URL, in templates that keep them
 export type SlideData = Omit<Slide, 'id' | 'image' | 'outerImage' | 'translations' | 'items'> & {
@@ -84,33 +85,24 @@ function design(id: string, name: string, description: string, specs: Spec[], pl
   return { id, name, description, targets }
 }
 
-export const BLANK = design('blank', 'Blank', 'One empty slide to start from.', [
-  { style: THEMES.Paper, below: true, title: 'Your headline here', subtitle: 'A short line that explains the benefit' },
-])
+/** A built-in design as builtin/templates.json describes it; each slide takes the template's theme. */
+interface Design {
+  id: string
+  name: string
+  description: string
+  theme: string // a name in THEMES
+  platforms?: Platform[] // all if unset
+  perPlatform?: Partial<Record<Platform, Partial<DevicePose>>>
+  slides: Omit<Spec, 'style'>[]
+}
 
 export const BUILT_IN: Template[] = [
-  BLANK,
-  design('classic', 'Classic', 'Headline on top, device front and centre.', [
-    { style: THEMES.Midnight, title: 'Plan your day in seconds', subtitle: 'Everything in one calm place' },
-    { style: THEMES.Midnight, title: 'Stay on track', subtitle: 'Gentle reminders, never noise' },
-    { style: THEMES.Midnight, title: 'Share with your team', subtitle: 'Invite anyone in one tap' },
-  ]),
-  design('angled', 'Angled', 'Devices turned toward each other for movement.', [
-    { style: THEMES.Sunrise, title: 'Capture every idea', subtitle: 'Fast, simple, always there', pose: { yaw: -24, roll: -6 } },
-    { style: THEMES.Sunrise, title: 'Find it again', subtitle: 'Search that just works', pose: { yaw: 24, roll: 6 } },
-    { style: THEMES.Sunrise, title: 'Works offline', subtitle: 'Your notes, wherever you are', pose: { yaw: -24, roll: -6 } },
-  ], ALL_PLATFORMS, { iphone: { pitch: -8, finish: 'burgundy' }, ipad: { pitch: -8 } }),
-  design('below', 'Text below', 'Calm colors, device on top, words underneath.', [
-    { style: THEMES.Mint, below: true, title: 'Breathe easier', subtitle: 'Two minutes a day', pose: { y: 0.1 } },
-    { style: THEMES.Mint, below: true, title: 'Sleep better', subtitle: 'Wind down with guided sounds', pose: { y: 0.1 } },
-  ], ALL_PLATFORMS, { iphone: { model: 'iphone-17-pro', finish: 'silver' }, mac: { finish: 'silver' } }),
-  design('duo', 'iPhone Duo', 'Open and folded views of the foldable iPhone.', [
-    { style: THEMES.Ocean, below: true, title: 'Made for the big screen', subtitle: 'Two panes, side by side', pose: { model: 'iphone-duo', finish: 'night-sky', size: 0.9, fold: 150, yaw: -10, pitch: 6 } },
-    { style: THEMES.Ocean, below: true, title: 'Fold it away', subtitle: 'Everything on the outside too', pose: { model: 'iphone-duo', finish: 'night-sky', size: 1.2, fold: 0, yaw: -20, pitch: 4 } },
-  ], ['duo']),
+  ...(builtinTemplates as Design[]).map((d) =>
+    design(d.id, d.name, d.description, d.slides.map((s) => ({ ...s, style: THEMES[d.theme] })), d.platforms, d.perPlatform)),
   // shared by the community: templates/*.json in the repo, added by the app's pull requests
   ...Object.values(import.meta.glob<Template>('../templates/*.json', { eager: true, import: 'default' })),
 ]
+export const BLANK = BUILT_IN.find((t) => t.id === 'blank')!
 
 const fromUrl = async (u?: Shot) => (u ? loadImage(await (await fetch(u)).blob()) : null)
 

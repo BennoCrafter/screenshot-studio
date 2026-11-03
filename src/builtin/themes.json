@@ -1,0 +1,14 @@
+{
+  "Midnight": { "bg1": "#1e1b4b", "bg2": "#4c1d95", "angle": 160, "textColor": "#ffffff" },
+  "Sunrise": { "bg1": "#fb923c", "bg2": "#f43f5e", "angle": 135, "textColor": "#ffffff" },
+  "Mint": { "bg1": "#d1fae5", "bg2": "#a7f3d0", "angle": 180, "textColor": "#064e3b" },
+  "Paper": { "bg1": "#fafaf9", "bg2": "#e7e5e4", "angle": 180, "textColor": "#1c1917" },
+  "Ocean": { "bg1": "#0ea5e9", "bg2": "#1e3a8a", "angle": 200, "textColor": "#ffffff" },
+  "Graphite": { "bg1": "#18181b", "bg2": "#3f3f46", "angle": 180, "textColor": "#fafafa" },
+  "Lavender": { "bg1": "#ede9fe", "bg2": "#c4b5fd", "angle": 160, "textColor": "#2e1065" },
+  "Forest": { "bg1": "#064e3b", "bg2": "#15803d", "angle": 150, "textColor": "#ecfdf5" },
+  "Peach": { "bg1": "#ffedd5", "bg2": "#fecdd3", "angle": 135, "textColor": "#7c2d12" },
+  "Neon": { "bg1": "#0f172a", "bg2": "#db2777", "angle": 135, "textColor": "#ffffff" },
+  "Sky": { "bg1": "#e0f2fe", "bg2": "#bae6fd", "angle": 180, "textColor": "#0c4a6e" },
+  "Sand": { "bg1": "#fef3c7", "bg2": "#fde68a", "angle": 200, "textColor": "#451a03" }
+}

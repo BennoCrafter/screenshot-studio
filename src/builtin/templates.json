@@ -1,0 +1,77 @@
+[
+  {
+    "id": "blank", "name": "Blank", "description": "One empty slide to start from.", "theme": "Paper",
+    "slides": [
+      { "below": true, "title": "Your headline here", "subtitle": "A short line that explains the benefit" }
+    ]
+  },
+  {
+    "id": "classic", "name": "Classic", "description": "Headline on top, device front and centre.", "theme": "Midnight",
+    "slides": [
+      { "title": "Plan your day in seconds", "subtitle": "Everything in one calm place" },
+      { "title": "Stay on track", "subtitle": "Gentle reminders, never noise" },
+      { "title": "Share with your team", "subtitle": "Invite anyone in one tap" }
+    ]
+  },
+  {
+    "id": "angled", "name": "Angled", "description": "Devices turned toward each other for movement.", "theme": "Sunrise",
+    "perPlatform": { "iphone": { "pitch": -8, "finish": "burgundy" }, "ipad": { "pitch": -8 } },
+    "slides": [
+      { "title": "Capture every idea", "subtitle": "Fast, simple, always there", "pose": { "yaw": -24, "roll": -6 } },
+      { "title": "Find it again", "subtitle": "Search that just works", "pose": { "yaw": 24, "roll": 6 } },
+      { "title": "Works offline", "subtitle": "Your notes, wherever you are", "pose": { "yaw": -24, "roll": -6 } }
+    ]
+  },
+  {
+    "id": "below", "name": "Text below", "description": "Calm colors, device on top, words underneath.", "theme": "Mint",
+    "perPlatform": { "iphone": { "model": "iphone-17-pro", "finish": "silver" }, "mac": { "finish": "silver" } },
+    "slides": [
+      { "below": true, "title": "Breathe easier", "subtitle": "Two minutes a day", "pose": { "y": 0.1 } },
+      { "below": true, "title": "Sleep better", "subtitle": "Wind down with guided sounds", "pose": { "y": 0.1 } }
+    ]
+  },
+  {
+    "id": "bold", "name": "Bold", "description": "Big dark headlines, device tilted back and dramatic.", "theme": "Graphite",
+    "perPlatform": { "iphone": { "finish": "black" } },
+    "slides": [
+      { "title": "Built for focus", "subtitle": "No clutter. Just your work", "pose": { "pitch": 10, "yaw": -14 } },
+      { "title": "Fast by default", "subtitle": "Opens in an instant", "pose": { "pitch": 10, "yaw": 14 } },
+      { "title": "Private by design", "subtitle": "Your data stays on your device", "pose": { "pitch": 10, "yaw": -14 } }
+    ]
+  },
+  {
+    "id": "soft", "name": "Soft", "description": "Pastel colors, words underneath, gentle tilt.", "theme": "Lavender",
+    "perPlatform": { "iphone": { "finish": "silver" }, "ipad": { "finish": "silver" }, "mac": { "finish": "silver" } },
+    "slides": [
+      { "below": true, "title": "Journal every day", "subtitle": "A minute is all it takes", "pose": { "roll": -4 } },
+      { "below": true, "title": "See your mood", "subtitle": "Patterns, gently surfaced", "pose": { "roll": 4 } },
+      { "below": true, "title": "Look back", "subtitle": "Every memory, one tap away", "pose": { "roll": -4 } }
+    ]
+  },
+  {
+    "id": "spotlight", "name": "Spotlight", "description": "Neon gradient, large device bleeding off the bottom.", "theme": "Neon",
+    "perPlatform": { "iphone": { "finish": "burgundy" } },
+    "slides": [
+      { "title": "Level up your workouts", "subtitle": "Plans that adapt to you", "pose": { "size": 0.9, "y": 0.08 } },
+      { "title": "Track every rep", "subtitle": "Your progress, at a glance", "pose": { "size": 0.9, "y": 0.08 } },
+      { "title": "Train with friends", "subtitle": "Challenges that keep you going", "pose": { "size": 0.9, "y": 0.08 } }
+    ]
+  },
+  {
+    "id": "nature", "name": "Nature", "description": "Deep greens, device turned in from the side.", "theme": "Forest",
+    "perPlatform": { "iphone": { "model": "iphone-17-pro", "finish": "silver" } },
+    "slides": [
+      { "title": "Explore the outdoors", "subtitle": "Thousands of trails nearby", "pose": { "yaw": 28, "pitch": -4 } },
+      { "title": "Never get lost", "subtitle": "Offline maps, everywhere", "pose": { "yaw": -28, "pitch": -4 } },
+      { "title": "Share your routes", "subtitle": "Bring your friends along", "pose": { "yaw": 28, "pitch": -4 } }
+    ]
+  },
+  {
+    "id": "duo", "name": "iPhone Duo", "description": "Open and folded views of the foldable iPhone.", "theme": "Ocean",
+    "platforms": ["duo"],
+    "slides": [
+      { "below": true, "title": "Made for the big screen", "subtitle": "Two panes, side by side", "pose": { "model": "iphone-duo", "finish": "night-sky", "size": 0.9, "fold": 150, "yaw": -10, "pitch": 6 } },
+      { "below": true, "title": "Fold it away", "subtitle": "Everything on the outside too", "pose": { "model": "iphone-duo", "finish": "night-sky", "size": 1.2, "fold": 0, "yaw": -20, "pitch": 4 } }
+    ]
+  }
+]
