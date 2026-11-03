@@ -218,8 +218,8 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     const parts = selection.filter((x) => x.slide === fromId).map((x) => x.part)
     setSlides((all) => {
       let src = all.find((s) => s.id === fromId)!, to = all.find((s) => s.id === toId)!
-      for (const part of parts) {
-        if (!layersOf(src).includes(part)) continue
+      // back to front, so they land on top of the other slide in the order they had
+      for (const part of layersOf(src).filter((p) => parts.includes(p))) {
         to = { ...to, ...added(to, itemOf(src, part) ?? part) }
         if (part === 'device') to = { ...to, device: src.device, image: src.image, outerImage: src.outerImage }
         for (const [l, t] of Object.entries(src.translations ?? {})) {
