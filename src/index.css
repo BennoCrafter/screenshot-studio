@@ -208,6 +208,9 @@ body { margin: 0; }
 .inspector-body { animation: rise 0.25s var(--ease) both;
 }
 .inspector h2 { margin: 0; font-size: 15px; }
+.orient { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.orient .platform-tabs > span { flex: 1; }
+.orient .platform-tabs button { width: 100%; }
 
 label {
   display: flex;

@@ -10,11 +10,12 @@ import { ask, FONT_FILES, IMAGE_FILES, isDesktop, openFiles, tell } from './nati
 import { fontFamily, fontFrom, LANGUAGES, languageName, languagesOf, loadImage, type Project, type ProjectFont } from './project'
 import { useStored } from './prefs'
 import { added, isDevice, isText, itemOf, kindOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotIdOf, shotOf, withShot, withShotId, withText, type Shot } from './elements'
-import { FONT, FONTS, layersOf, localize, PLATFORMS, SIZES, type Item, type Part, type Platform, type Slide, type Style, type Target } from './render'
+import { FONT, FONTS, layersOf, localize, PLATFORMS, sizeOf, type Item, type Part, type Platform, type Slide, type Style, type Target } from './render'
 import { SlideCanvas } from './SlideCanvas'
+import { SHAPES } from './shapes'
 import { watchShotFolder } from './shotFolder'
 import { Export } from './Export'
-import { adaptTarget, ALL_PLATFORMS, poseFor } from './templates'
+import { adaptTarget, ALL_PLATFORMS, poseFor, rotateTarget } from './templates'
 
 type Updater<T> = (fn: (v: T) => T) => void
 /** One element on one slide. */
@@ -58,7 +59,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     setSelection(id ? [{ slide: id, part: 'device' }] : [])
     setEditing(null)
   }
-  const size = SIZES[target.size]
+  const size = sizeOf(target)
   const sel = slides.find((s) => s.id === selection.at(-1)?.slide) ?? null
   const shown = sel && (selection.filter((x) => x.slide === sel.id && layersOf(sel).includes(x.part)).at(-1)?.part ?? null) // in the inspector
   const shownKind = sel && shown && kindOf(sel, shown)
@@ -431,7 +432,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         )}
       </aside>
 
-      <Board fitKey={`${target.platform}-${target.size}`} onEmptyClick={() => selectSlide(null)}>
+      <Board fitKey={`${target.platform}-${target.size}-${!!target.landscape}`} onEmptyClick={() => selectSlide(null)}>
         {slides.map((s, i) => (
           <div
             key={s.id}
@@ -544,6 +545,18 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
             <>
               <h2>{PLATFORMS[target.platform].label}</h2>
               <p className="hint">Click a slide to edit it. Click empty board space or press Esc to clear the selection.</p>
+              {target.platform !== 'mac' && (
+                <div className="orient">
+                  All slides · {size[0]}×{size[1]}
+                  <span className="platform-tabs">
+                    {([false, true] as const).map((l) => (
+                      <span key={String(l)} className={!!target.landscape === l ? 'on' : ''}>
+                        <button onClick={() => !!target.landscape !== l && setTarget(rotateTarget)}>{l ? 'Landscape' : 'Portrait'}</button>
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              )}
             </>
           )}
         </div>

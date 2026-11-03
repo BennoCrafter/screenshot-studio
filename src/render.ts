@@ -101,7 +101,14 @@ export const PLATFORMS: Record<Platform, { label: string; sizes: SizeName[]; dev
 export interface Target {
   platform: Platform
   size: SizeName
+  landscape?: boolean // the store size turned on its side
   slides: Slide[]
+}
+
+/** A target's slide in px: its store size, width and height swapped when landscape. */
+export const sizeOf = ({ size, landscape }: Pick<Target, 'size' | 'landscape'>): readonly [number, number] => {
+  const [w, h] = SIZES[size]
+  return landscape ? [h, w] : [w, h]
 }
 
 export const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif'

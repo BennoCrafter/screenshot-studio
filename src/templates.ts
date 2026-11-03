@@ -17,6 +17,7 @@ export type SlideData = Omit<Slide, 'id' | 'image' | 'outerImage' | 'translation
 export interface TargetData {
   platform: Platform
   size: SizeName
+  landscape?: boolean
   slides: SlideData[]
 }
 
@@ -111,6 +112,7 @@ export async function toTarget(data: TargetData): Promise<Target> {
   return {
     platform: data.platform,
     size: data.size,
+    landscape: data.landscape,
     slides: await Promise.all(data.slides.map(async (d) => ({
       ...d,
       device: { ...d.device },
@@ -122,12 +124,29 @@ export async function toTarget(data: TargetData): Promise<Target> {
   }
 }
 
+// texts keep their size against the slide's short side, so a phone's headline isn't huge on a Mac
+const unit = ([w, h]: readonly [number, number]) => Math.min(w, h * 0.8) / w
+
+/** The set turned between portrait and landscape: everything sized against the slide keeps its size against the short side. */
+export function rotateTarget(t: Target): Target {
+  const landscape = !t.landscape
+  const k = unit(sizeOf({ ...t, landscape })) / unit(sizeOf(t))
+  const scale = <P extends { size: number }>(d: P) => ({ ...d, size: d.size * k })
+  return {
+    ...t,
+    landscape,
+    slides: t.slides.map((s) => ({
+      ...s,
+      device: scale(s.device),
+      items: s.items?.map((i) => ({ ...i, w: i.w * k, h: i.h * k, ...(i.size != null ? { size: i.size * k } : {}), ...(i.device ? { device: scale(i.device) } : {}) })),
+    })),
+  }
+}
+
 /** A new platform's set copied from an existing one: same words and colors, that platform's device. */
 export function adaptTarget(from: Target, platform: Platform): Target {
   const size = PLATFORMS[platform].sizes[0]
-  // texts keep their size against the slide's short side, so a phone's headline isn't huge on a Mac
-  const unit = ([w, h]: readonly [number, number]) => Math.min(w, h * 0.8) / w
-  const k = unit(SIZES[size]) / unit(SIZES[from.size])
+  const k = unit(SIZES[size]) / unit(sizeOf(from))
   return {
     platform,
     size,

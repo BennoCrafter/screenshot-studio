@@ -155,9 +155,10 @@ async function fromAgent(prev: Project, input: Json): Promise<Project> {
       if (!PLATFORMS[platform]) throw new Error(`Unknown platform ${platform}`)
       const size = (t.size ?? PLATFORMS[platform].sizes[0]) as Target['size']
       if (!PLATFORMS[platform].sizes.includes(size)) throw new Error(`${size} is not a ${platform} size`)
+      if (t.landscape && platform === 'mac') throw new Error('mac slides are already landscape')
       const slides = t.slides as Json[]
       if (!Array.isArray(slides) || !slides.length) throw new Error(`${platform}: slides must be a non-empty array`)
-      return { platform, size, slides: await Promise.all(slides.map((s) => slideFrom(platform, s, old.get(s.id as string)))) }
+      return { platform, size, landscape: t.landscape === true || undefined, slides: await Promise.all(slides.map((s) => slideFrom(platform, s, old.get(s.id as string)))) }
     })),
   }
 }
@@ -195,7 +196,7 @@ export const TOOLS: { name: string; description: string; inputSchema: Json; run:
   {
     name: 'update_project',
     description: `Replace the open project's name and targets with the given JSON, in the shape get_state returns. The app updates live and autosaves.
-languages: App Store language codes; the first is the primary. Each target: { platform, size, slides }. Each slide: { id?, bg1, bg2 (hex), angle (gradient degrees), textColor (for texts without their own color), layers? (what's on the slide, back to front: "device" and item ids; leaving one out deletes it; new items go in front), items? (texts and other objects: { id?, kind: "text" | "rect" | "ellipse" | "image" | "device", x, y: centre as fractions of slide width/height, w, h: fractions of slide width (a text wraps at w), size?: text font size as a fraction of slide width (a headline is ~0.085, a subtitle ~0.042), font?: text CSS font family (default the system font; get_state lists the built-in ones under reference.fonts and the project's own under fonts; add_font adds one), weight?: text font weight (default 600; headlines 800, subtitles 500), opacity?: text, 0-1, text?, rotation?: degrees clockwise (not devices), color?, image?, device? (a device pose like the slide's; its size is a fraction of slide width), outerImage?, shotId? }), device, image?, outerImage?, shotId? }. shotId (images and devices; the slide's own device on the slide) names a screenshot for replace_screenshots. Headlines and subtitles are just text items.
+languages: App Store language codes; the first is the primary. Each target: { platform, size, landscape? (true turns the size on its side; not mac), slides }. Each slide: { id?, bg1, bg2 (hex), angle (gradient degrees), textColor (for texts without their own color), layers? (what's on the slide, back to front: "device" and item ids; leaving one out deletes it; new items go in front), items? (texts and other objects: { id?, kind: "text" | "rect" | "ellipse" | "shape" | "image" | "device", shape?: (shapes, badges and icons: ${Object.keys(SHAPES).join(', ')}; colored by color; omit h to keep its proportions), x, y: centre as fractions of slide width/height, w, h: fractions of slide width (a text wraps at w), size?: text font size as a fraction of slide width (a headline is ~0.085, a subtitle ~0.042), font?: text CSS font family (default the system font; get_state lists the built-in ones under reference.fonts and the project's own under fonts; add_font adds one), weight?: text font weight (default 600; headlines 800, subtitles 500), opacity?: text, 0-1, text?, rotation?: degrees clockwise (not devices), color?, image?, device? (a device pose like the slide's; its size is a fraction of slide width), outerImage?, shotId? }), device, image?, outerImage?, shotId? }. shotId (images and devices; the slide's own device on the slide) names a screenshot for replace_screenshots. Headlines and subtitles are just text items.
 device: { model, finish, size (device width / slide width, ~0.3-1.2), yaw, pitch, roll (degrees), fold (degrees; 180 flat, 0 closed; foldables and Mac lid), x, y (offset of its centre from the slide's middle, as fraction of slide width/height), shadow?, reflections? (false turns off the drop shadow / glossy reflections) }. Omitted fields keep their value for an existing slide id, or get defaults.
 Item text is the primary language's; translations: { "<code>": { items?: { <text item id>: text }, shots? } } holds the other languages'. shots: { "device" or a device item's id: { image?, outerImage? } } gives that language its own screenshots (same values as image above; omitted ones keep what's there, and a language without one shows the primary language's). Everything else is shared by all languages.
 image / outerImage: true keeps the current screenshot, false removes it, a string is an absolute path or an http(s) URL of a PNG, JPEG, WebP or SVG to load. Slide order is array order; omit a slide to delete it, omit id to add one.`,
@@ -245,8 +246,8 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
     run: async (host, a) => {
       const t = targetOf(current(host), a.platform as string)
       const s = slideAt(t, a.index as number)
-      const [w, h] = SIZES[t.size]
-      return [{ type: 'image', data: await base64(await renderSlide(localize(s, a.language as string), SIZES[t.size], Math.min(1, 1000 / Math.max(w, h)))), mimeType: 'image/png' }]
+      const [w, h] = sizeOf(t)
+      return [{ type: 'image', data: await base64(await renderSlide(localize(s, a.language as string), sizeOf(t), Math.min(1, 1000 / Math.max(w, h)))), mimeType: 'image/png' }]
     },
   },
   {
@@ -326,11 +327,11 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
       await mkdir(dir, { recursive: true })
       const written: string[] = []
       for (const t of a.platform ? [targetOf(p, a.platform as string)] : p.targets) {
-        const [w, h] = SIZES[t.size]
+        const [w, h] = sizeOf(t)
         for (const l of languagesOf(p)) {
           for (const [i, s] of t.slides.entries()) {
             const path = `${dir}/${p.name}-${t.platform}-${l}-${i + 1}-${w}x${h}.png`
-            await writeFile(path, new Uint8Array(await (await renderSlide(localize(s, l), SIZES[t.size])).arrayBuffer()))
+            await writeFile(path, new Uint8Array(await (await renderSlide(localize(s, l), sizeOf(t))).arrayBuffer()))
             written.push(path)
           }
         }
