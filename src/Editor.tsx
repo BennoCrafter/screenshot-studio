@@ -593,10 +593,13 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
         <label>&nbsp;<input type="color" value={sel.bg2} onChange={(e) => update({ bg2: e.target.value })} /></label>
         <label>Text<input type="color" value={sel.textColor} onChange={(e) => update({ textColor: e.target.value })} /></label>
       </div>
-      <label>
-        Gradient angle · {sel.angle}°
-        <input type="range" min={0} max={360} value={sel.angle} onChange={(e) => update({ angle: +e.target.value })} />
-      </label>
+      <div className="field">
+        <div className="field-head">
+          Gradient angle · {sel.angle}°
+          {sel.angle !== 0 && <button type="button" className="link" onClick={() => update({ angle: 0 })}>Reset</button>}
+        </div>
+        <input type="range" aria-label="Gradient angle" min={0} max={360} value={sel.angle} onDoubleClick={() => update({ angle: 0 })} onChange={(e) => update({ angle: +e.target.value })} />
+      </div>
     </div>
   )
 }
@@ -736,18 +739,9 @@ function DeviceInspector({ sel, device, lang, update, idField }: { sel: Slide; d
         Device size · {Math.round(pose.size * 100)}%
         <input type="range" min={0.3} max={1.2} step={0.01} value={pose.size} onChange={(e) => setDevice({ size: +e.target.value })} />
       </label>
-      <label>
-        Turn · {pose.yaw}°
-        <input type="range" min={-180} max={180} value={pose.yaw} onChange={(e) => setDevice({ yaw: +e.target.value })} />
-      </label>
-      <label>
-        Spin · {pose.roll ?? 0}°
-        <input type="range" min={-180} max={180} value={pose.roll ?? 0} onChange={(e) => setDevice({ roll: +e.target.value })} />
-      </label>
-      <label>
-        Tilt · {pose.pitch}°
-        <input type="range" min={-90} max={90} value={pose.pitch} onChange={(e) => setDevice({ pitch: +e.target.value })} />
-      </label>
+      <AngleSlider label="Turn" max={180} value={pose.yaw} set={(yaw) => setDevice({ yaw })} />
+      <AngleSlider label="Spin" max={180} value={pose.roll ?? 0} set={(roll) => setDevice({ roll })} />
+      <AngleSlider label="Tilt" max={90} value={pose.pitch} set={(pitch) => setDevice({ pitch })} />
       {(model.fold || model.laptop) && (
         <label>
           {model.laptop ? 'Lid' : 'Fold'} · {pose.fold}°
@@ -760,7 +754,23 @@ function DeviceInspector({ sel, device, lang, update, idField }: { sel: Slide; d
   )
 }
 
-/** An element's screenshot ID: a file of that name in the screenshot folder replaces its screenshot. One taken
+/** A −max…max° slider that snaps to 0 near it; Reset or a double-click sets it back to 0. */
+function AngleSlider({ label, max, value, set }: { label: string; max: number; value: number; set: (v: number) => void }) {
+  const keys = useRef(false) // arrow keys step 1° and must not snap back, or they could never leave 0
+  return (
+    <div className="field">
+      <div className="field-head">
+        {label} · {value}°
+        {value !== 0 && <button type="button" className="link" onClick={() => set(0)}>Reset</button>}
+      </div>
+      <input type="range" aria-label={label} min={-max} max={max} value={value} onDoubleClick={() => set(0)}
+        onKeyDown={() => (keys.current = true)} onPointerDown={() => (keys.current = false)}
+        onChange={(e) => set(!keys.current && Math.abs(+e.target.value) <= 4 ? 0 : +e.target.value)} />
+    </div>
+  )
+}
+
+/** An element's screenshot ID:a file of that name in the screenshot folder replaces its screenshot. One taken
  * elsewhere in the project isn't kept, so each ID stays on one element. */
 function ShotIdField({ id, user, set }: { id: string; user: (id: string) => string | null; set: (id: string) => void }) {
   const [draft, setDraft] = useState(id)
