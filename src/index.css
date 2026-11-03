@@ -641,8 +641,9 @@ dialog:focus { outline: none; }
 .settings-side nav button.on { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .settings-side nav svg { flex: 0 0 auto; color: var(--muted); }
 .settings-side nav button.on svg { color: var(--accent); }
-.settings-side footer { display: flex; justify-content: space-between; gap: 8px; margin-top: auto; padding: 0 4px; font-size: 11px; color: var(--muted); }
+.settings-side footer { display: flex; flex-direction: column; gap: 4px; margin-top: auto; padding: 0 4px; font-size: 11px; color: var(--muted); }
 .settings-side footer a { color: var(--accent); text-decoration: none; }
+.settings-side footer .links { display: flex; gap: 12px; }
 .settings-side footer a:hover { text-decoration: underline; }
 .settings-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .settings-main > header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 12px; border-bottom: 1px solid var(--s-line); }

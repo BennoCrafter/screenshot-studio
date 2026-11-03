@@ -35,6 +35,7 @@ export async function claudeLinked() {
 }
 
 const GITHUB = 'https://github.com/BennoCrafter/screenshot-studio'
+const WEBSITE = 'https://bennowo.de/apps/screenshot-studio'
 
 /** Opens a link in the browser (the desktop webview would otherwise navigate itself away). */
 export const openLink = async (url: string) => {
@@ -230,7 +231,10 @@ export function Settings({ project, setProject }: { project: Project | null; set
         </nav>
         <footer>
           <span>Screenshot Studio{version && ` ${version}`}</span>
-          <a href={GITHUB} onClick={(e) => { e.preventDefault(); openLink(GITHUB) }}>GitHub</a>
+          <span className="links">
+            <a href={WEBSITE} onClick={(e) => { e.preventDefault(); openLink(WEBSITE) }}>Website</a>
+            <a href={GITHUB} onClick={(e) => { e.preventDefault(); openLink(GITHUB) }}>GitHub</a>
+          </span>
         </footer>
       </aside>
       <div className="settings-main">
