@@ -24,7 +24,7 @@ async function answer(host: Host, req: { id: unknown; method: string; params?: J
       return ok({
         protocolVersion: (req.params?.protocolVersion as string) ?? '2025-06-18',
         capabilities: { tools: {} },
-        serverInfo: { name: 'screenshot-studio', version: '0.1.0' },
+        serverInfo: { name: 'screenshot-studio', version: '0.2.0' },
         instructions: INSTRUCTIONS,
       })
     case 'ping':
