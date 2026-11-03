@@ -248,6 +248,8 @@ label {
   border-right: 1px solid var(--border);
   position: relative;
 }
+.tools > * { flex-shrink: 0; } /* the panel scrolls; its parts (Layers too) keep their height */
+.app > .resizer { grid-area: tools; position: relative; justify-self: end; }
 .tools h3 { display: flex; justify-content: space-between; margin: 6px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .tools label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .tools h3 span { font-weight: 400; }

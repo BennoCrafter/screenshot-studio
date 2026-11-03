@@ -377,8 +377,9 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         <LanguageDialog dialog={langDialog} have={langs} onAdd={addLanguage} />
       </nav>
 
+      {/* outside the panel, which scrolls: inside it'd be clipped and scroll away */}
+      <Resizer edge="right" set={(x) => setToolsW(Math.min(420, Math.max(180, x)))} />
       <aside className="tools">
-        <Resizer edge="right" set={(x) => setToolsW(Math.min(420, Math.max(180, x)))} />
         <h3>Add</h3>
         <div className="add-grid">
           <button onClick={() => insert(() => newItem('text'))}><Icon d="M5 6V4h14v2M12 4v16M9 20h6" />Text</button>
