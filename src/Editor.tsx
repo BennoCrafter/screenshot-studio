@@ -9,7 +9,7 @@ import { animate } from './motion'
 import { ask, FONT_FILES, IMAGE_FILES, isDesktop, openFiles, tell } from './native'
 import { fontFamily, fontFrom, LANGUAGES, languageName, languagesOf, loadImage, type Project, type ProjectFont } from './project'
 import { useStored } from './prefs'
-import { added, isDevice, isText, itemOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotIdOf, shotOf, withShot, withShotId, withText, type Shot } from './elements'
+import { added, isDevice, isText, itemOf, kindOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotIdOf, shotOf, withShot, withShotId, withText, type Shot } from './elements'
 import { FONT, FONTS, layersOf, localize, PLATFORMS, SIZES, type Item, type Part, type Platform, type Slide, type Style, type Target } from './render'
 import { SlideCanvas } from './SlideCanvas'
 import { watchShotFolder } from './shotFolder'
@@ -60,6 +60,10 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
   }
   const size = SIZES[target.size]
   const sel = slides.find((s) => s.id === selection.at(-1)?.slide) ?? null
+  const shown = sel && (selection.filter((x) => x.slide === sel.id && layersOf(sel).includes(x.part)).at(-1)?.part ?? null) // in the inspector
+  const shownKind = sel && shown && kindOf(sel, shown)
+  /** The picked elements the inspector's settings fit: those of the shown one's kind. */
+  const like = (s: Slide, p: Part) => kindOf(s, p) === shownKind
   const langs = languagesOf(project)
   const [picked, setLang] = useState(langs[0])
   const lang = langs.includes(picked) ? picked : langs[0]
@@ -147,9 +151,9 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       return { ...r, ...moved(s0, r, p, (at.x - about.x) * (ratio - 1), (at.y - about.y) * (ratio - 1)) }
     }, s))))
 
-  /** Applies `fn` to every picked element that's on its slide. */
-  const eachPicked = (fn: (s: Slide, part: Part) => Partial<Slide>) =>
-    setSlides((all) => all.map((s) => selection.filter((x) => x.slide === s.id && layersOf(s).includes(x.part))
+  /** Applies `fn` to every picked element that's on its slide (and passes `only`). */
+  const eachPicked = (fn: (s: Slide, part: Part) => Partial<Slide>, only = (_s: Slide, _p: Part) => true) =>
+    setSlides((all) => all.map((s) => selection.filter((x) => x.slide === s.id && layersOf(s).includes(x.part) && only(s, x.part))
       .reduce((s, x) => ({ ...s, ...fn(s, x.part) }), s)))
 
   const remove = () => {
@@ -517,7 +521,9 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
             <SlideInspector
               key={sel.id}
               sel={sel}
-              part={selection.filter((x) => x.slide === sel.id && layersOf(sel).includes(x.part)).at(-1)?.part ?? null}
+              part={shown}
+              edit={(fn) => eachPicked(fn, like)}
+              likeCount={selection.filter((x) => { const s = slides.find((s) => s.id === x.slide); return !!s && layersOf(s).includes(x.part) && like(s, x.part) }).length}
               lang={textLang}
               setText={(part, text) => setText(sel, part, text)}
               fonts={project.fonts ?? []}
@@ -549,7 +555,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
 }
 
 /** The picked element's settings (the last one, when several are picked), then the slide's own. */
-function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update, slideCount, updateSlides, shotIdUser }: {
+function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update, edit, likeCount, slideCount, updateSlides, shotIdUser }: {
   sel: Slide
   fonts: ProjectFont[] // the project's own
   addFont: (file: File) => Promise<ProjectFont>
@@ -560,6 +566,9 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
   index: number
   size: readonly [number, number] // the slide in px
   update: (patch: Partial<Slide>) => void
+  /** Applies `fn` to every picked element of the shown one's kind, on any picked slide. */
+  edit: (fn: (s: Slide, part: Part) => Partial<Slide>) => void
+  likeCount: number // how many that is
   slideCount: number // slides with something picked
   /** Sets the slide's own settings (background, …) on every picked slide. */
   updateSlides: (patch: Partial<Slide>) => void
@@ -569,31 +578,33 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
   const item = part ? itemOf(sel, part) : undefined
   const at = part ? positionOf(sel, part, size) : null
   const [showIds] = useStored<'on' | 'off'>('shot-ids', 'off')
-  const setItem = (patch: Partial<Item>) => update({ items: sel.items!.map((i) => (i.id === item!.id ? { ...i, ...patch } : i)) })
+  const setItem = (patch: Partial<Item> | ((i: Item) => Partial<Item>)) =>
+    edit((s, p) => ({ items: s.items!.map((i) => (i.id === p ? { ...i, ...(typeof patch === 'function' ? patch(i) : patch) } : i)) }))
   // under the element's screenshot picker
   const idField = part && showIds === 'on' && (
     <ShotIdField key={part} id={shotIdOf(sel, part) ?? ''} user={(id) => shotIdUser(id, part)} set={(id) => update(withShotId(sel, part, id))} />
   )
   return (
     <div className="inspector-body">
-      {part && <h2>{partName(sel, part)}</h2>}
+      {part && <h2>{likeCount > 1 ? `${likeCount} ${kindName(sel, part)}` : partName(sel, part)}</h2>}
+      {part && likeCount > 1 && <p className="hint">Changes here apply to all {likeCount} picked {kindName(sel, part)}, on every picked slide. Text and screenshot IDs stay their own.</p>}
       {part && at && (
         <div className="vec2">
           <span>Position</span>
           {(['x', 'y'] as const).map((axis) => (
             <ScrubNumber key={axis} axis={axis} value={Math.round(at[axis])} onChange={(v) =>
-              update(moved(sel, sel, part, axis === 'x' ? (v - at.x) / size[0] : 0, axis === 'y' ? (v - at.y) / size[1] : 0))} />
+              edit((s, p) => { const a = positionOf(s, p, size); return moved(s, s, p, axis === 'x' ? (v - a.x) / size[0] : 0, axis === 'y' ? (v - a.y) / size[1] : 0) })} />
           ))}
         </div>
       )}
-      {part && isDevice(sel, part) && <DeviceInspector sel={sel} device={part} lang={lang} update={update} idField={idField} />}
+      {part && isDevice(sel, part) && <DeviceInspector sel={sel} device={part} lang={lang} edit={edit} idField={idField} />}
       {item?.kind === 'text' && <TextInspector item={item} sel={sel} lang={lang} fonts={fonts} addFont={addFont} fontForAll={fontForAll} set={setItem} setText={(t) => setText(item.id, t)} />}
       {(item?.kind === 'rect' || item?.kind === 'ellipse') && (
         <label>Color<input type="color" value={item.color ?? sel.textColor} onChange={(e) => setItem({ color: e.target.value })} /></label>
       )}
       {item?.kind === 'image' && (
         <>
-          <ShotPicker label="Image" image={item.image ?? null} set={(image) => setItem({ image, h: (item.w * image.naturalHeight) / image.naturalWidth })} />
+          <ShotPicker label="Image" image={item.image ?? null} set={(image) => setItem((i) => ({ image, h: (i.w * image.naturalHeight) / image.naturalWidth }))} />
           {idField}
         </>
       )}
@@ -615,6 +626,9 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
     </div>
   )
 }
+
+/** 'texts', 'devices', … for a heading over several picked elements. */
+const kindName = (s: Slide, p: Part) => ({ text: 'texts', rect: 'rectangles', ellipse: 'ellipses', image: 'images', device: 'devices' })[kindOf(s, p) ?? 'text']
 
 /** A number with its axis letter in front, like Godot, Blender or Unity: type it, or drag the letter sideways to scrub (Shift for fine steps). */
 function ScrubNumber({ axis, value, onChange }: { axis: 'x' | 'y'; value: number; onChange: (v: number) => void }) {
@@ -711,16 +725,17 @@ function TextInspector({ item, sel, lang, fonts, addFont, fontForAll, set, setTe
 }
 
 /** A device's screenshots and pose: the slide's own (`device` = 'device') or an added one. */
-function DeviceInspector({ sel, device, lang, update, idField }: { sel: Slide; device: Part; lang?: string; update: (patch: Partial<Slide>) => void; idField?: React.ReactNode }) {
+function DeviceInspector({ sel, device, lang, edit, idField }: { sel: Slide; device: Part; lang?: string; edit: (fn: (s: Slide, part: Part) => Partial<Slide>) => void; idField?: React.ReactNode }) {
   const shot = shotOf(sel, device), pose = shot.device
-  const setShot = (patch: Partial<Shot>) => update(withShot(sel, device, patch, lang))
+  const setShot = (patch: Partial<Shot>) => edit((s, p) => withShot(s, p, patch, lang))
   const own = lang ? sel.translations?.[lang]?.shots?.[device] : undefined // this language's own screenshots
   const shotLabel = (what: string, has?: HTMLImageElement | null) => (
     <>{what}{lang && <small className="shot-lang">{has ? ` · ${languageName(lang)} only` : ' · same as primary'}{has && (
       <button type="button" className="link" onClick={() => setShot({ [what === 'Screenshot' ? 'image' : 'outerImage']: null })}>Use primary</button>
     )}</small>}</>
   )
-  const setDevice = (patch: Partial<DevicePose>) => setShot({ device: { ...pose, ...patch } })
+  // each device keeps the rest of its own pose
+  const setDevice = (patch: Partial<DevicePose>) => edit((s, p) => withShot(s, p, { device: { ...shotOf(s, p).device, ...patch } }, lang))
   const model = DEVICE_BY_ID[pose.model]
   const families = [...new Set(DEVICES.map((d) => d.family))]
   return (

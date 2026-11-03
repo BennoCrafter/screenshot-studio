@@ -12,6 +12,8 @@ export const textsOf = (s: Slide) => layersOf(s).map((p) => itemOf(s, p)).filter
 export const labelOf = (s: Slide) => textsOf(s)[0]?.text?.trim().split('\n')[0] ?? ''
 
 export const isDevice = (s: Slide, p: Part) => p === 'device' || itemOf(s, p)?.kind === 'device'
+/** 'device' for the slide's own device too, so it groups with added ones. */
+export const kindOf = (s: Slide, p: Part) => (p === 'device' ? 'device' : itemOf(s, p)?.kind)
 
 /** A device element's pose and screenshots: the slide's own device, or an added one. */
 export type Shot = { device: DevicePose; image: HTMLImageElement | null; outerImage: HTMLImageElement | null }
