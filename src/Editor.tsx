@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { Board } from './Board'
 import { DEVICES, DEVICE_BY_ID } from './devices/models'
 import type { DevicePose } from './devices/render3d'
@@ -523,7 +523,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
               sel={sel}
               part={shown}
               edit={(fn) => eachPicked(fn, like)}
-              likeCount={selection.filter((x) => { const s = slides.find((s) => s.id === x.slide); return !!s && layersOf(s).includes(x.part) && like(s, x.part) }).length}
+              likes={selection.flatMap((x) => { const s = slides.find((s) => s.id === x.slide); return s && layersOf(s).includes(x.part) && like(s, x.part) ? [{ s, p: x.part }] : [] })}
               lang={textLang}
               setText={(part, text) => setText(sel, part, text)}
               fonts={project.fonts ?? []}
@@ -532,7 +532,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
               index={slides.indexOf(sel)}
               size={size}
               update={(patch) => update(sel.id, patch)}
-              slideCount={new Set(selection.map((x) => x.slide)).size}
+              pickedSlides={slides.filter((s) => selection.some((x) => x.slide === s.id))}
               updateSlides={(patch) => setSlides((all) => all.map((s) => (selection.some((x) => x.slide === s.id) ? { ...s, ...patch } : s)))}
               shotIdUser={(id, part) => {
                 for (const t of project.targets) for (const [i, s] of t.slides.entries()) for (const p of layersOf(s))
@@ -555,7 +555,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
 }
 
 /** The picked element's settings (the last one, when several are picked), then the slide's own. */
-function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update, edit, likeCount, slideCount, updateSlides, shotIdUser }: {
+function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update, edit, likes, pickedSlides, updateSlides, shotIdUser }: {
   sel: Slide
   fonts: ProjectFont[] // the project's own
   addFont: (file: File) => Promise<ProjectFont>
@@ -568,8 +568,8 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
   update: (patch: Partial<Slide>) => void
   /** Applies `fn` to every picked element of the shown one's kind, on any picked slide. */
   edit: (fn: (s: Slide, part: Part) => Partial<Slide>) => void
-  likeCount: number // how many that is
-  slideCount: number // slides with something picked
+  likes: Picked[] // those elements
+  pickedSlides: Slide[] // slides with something picked
   /** Sets the slide's own settings (background, …) on every picked slide. */
   updateSlides: (patch: Partial<Slide>) => void
   /** Where else in the project a screenshot ID is used, if anywhere: IDs are unique. */
@@ -577,6 +577,9 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
 }) {
   const item = part ? itemOf(sel, part) : undefined
   const at = part ? positionOf(sel, part, size) : null
+  const likeCount = likes.length, slideCount = pickedSlides.length
+  const slidesDiffer = (get: (s: Slide) => unknown) => differ(pickedSlides.map(get))
+  const posDiffers = (axis: 'x' | 'y') => differ(likes.map(({ s, p }) => Math.round(positionOf(s, p, size)[axis])))
   const [showIds] = useStored<'on' | 'off'>('shot-ids', 'off')
   const setItem = (patch: Partial<Item> | ((i: Item) => Partial<Item>)) =>
     edit((s, p) => ({ items: s.items!.map((i) => (i.id === p ? { ...i, ...(typeof patch === 'function' ? patch(i) : patch) } : i)) }))
@@ -585,12 +588,13 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
     <ShotIdField key={part} id={shotIdOf(sel, part) ?? ''} user={(id) => shotIdUser(id, part)} set={(id) => update(withShotId(sel, part, id))} />
   )
   return (
+    <Picks.Provider value={likes}>
     <div className="inspector-body">
       {part && <h2>{likeCount > 1 ? `${likeCount} ${kindName(sel, part)}` : partName(sel, part)}</h2>}
       {part && likeCount > 1 && <p className="hint">Changes here apply to all {likeCount} picked {kindName(sel, part)}, on every picked slide. Text and screenshot IDs stay their own.</p>}
       {part && at && (
         <div className="vec2">
-          <span>Position</span>
+          <span>Position{(posDiffers('x') || posDiffers('y')) && <Mixed />}</span>
           {(['x', 'y'] as const).map((axis) => (
             <ScrubNumber key={axis} axis={axis} value={Math.round(at[axis])} onChange={(v) =>
               edit((s, p) => { const a = positionOf(s, p, size); return moved(s, s, p, axis === 'x' ? (v - a.x) / size[0] : 0, axis === 'y' ? (v - a.y) / size[1] : 0) })} />
@@ -600,7 +604,7 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
       {part && isDevice(sel, part) && <DeviceInspector sel={sel} device={part} lang={lang} edit={edit} idField={idField} />}
       {item?.kind === 'text' && <TextInspector item={item} sel={sel} lang={lang} fonts={fonts} addFont={addFont} fontForAll={fontForAll} set={setItem} setText={(t) => setText(item.id, t)} />}
       {(item?.kind === 'rect' || item?.kind === 'ellipse') && (
-        <label>Color<input type="color" value={item.color ?? sel.textColor} onChange={(e) => setItem({ color: e.target.value })} /></label>
+        <label>Color{differ(likes.map(({ s, p }) => itemOf(s, p)?.color ?? s.textColor)) && <Mixed />}<input type="color" value={item.color ?? sel.textColor} onChange={(e) => setItem({ color: e.target.value })} /></label>
       )}
       {item?.kind === 'image' && (
         <>
@@ -612,20 +616,33 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
       <h2 className={part ? 'inspector-slide' : undefined}>{slideCount > 1 ? `${slideCount} slides` : `Slide ${index + 1}`}</h2>
       {slideCount > 1 && <p className="hint">Background, text color and gradient angle change on all {slideCount} picked slides.</p>}
       <div className="row">
-        <label>Background<input type="color" value={sel.bg1} onChange={(e) => updateSlides({ bg1: e.target.value })} /></label>
+        <label>Background{(slidesDiffer((s) => s.bg1) || slidesDiffer((s) => s.bg2)) && <Mixed />}<input type="color" value={sel.bg1} onChange={(e) => updateSlides({ bg1: e.target.value })} /></label>
         <label>&nbsp;<input type="color" value={sel.bg2} onChange={(e) => updateSlides({ bg2: e.target.value })} /></label>
-        <label>Text<input type="color" value={sel.textColor} onChange={(e) => updateSlides({ textColor: e.target.value })} /></label>
+        <label>Text{slidesDiffer((s) => s.textColor) && <Mixed />}<input type="color" value={sel.textColor} onChange={(e) => updateSlides({ textColor: e.target.value })} /></label>
       </div>
       <div className="field">
         <div className="field-head">
-          Gradient angle · {sel.angle}°
+          Gradient angle · {slidesDiffer((s) => s.angle) ? 'Mixed' : `${sel.angle}°`}
           {sel.angle !== 0 && <button type="button" className="link" onClick={() => updateSlides({ angle: 0 })}>Reset</button>}
         </div>
         <input type="range" aria-label="Gradient angle" min={0} max={360} value={sel.angle} onDoubleClick={() => updateSlides({ angle: 0 })} onChange={(e) => updateSlides({ angle: +e.target.value })} />
       </div>
     </div>
+    </Picks.Provider>
   )
 }
+
+type Picked = { s: Slide; p: Part }
+/** The picked elements the inspector edits together, so their settings can say when they differ. */
+const Picks = createContext<Picked[]>([])
+const differ = (values: unknown[]) => new Set(values).size > 1
+/** Whether the picked elements disagree on a setting. */
+function useDiffers() {
+  const picks = useContext(Picks)
+  return (get: (s: Slide, p: Part) => unknown) => differ(picks.map(({ s, p }) => get(s, p)))
+}
+/** Marks a setting the picked elements or slides disagree on: it shows the last one's value. */
+const Mixed = () => <small className="mixed"> · Mixed</small>
 
 /** 'texts', 'devices', … for a heading over several picked elements. */
 const kindName = (s: Slide, p: Part) => ({ text: 'texts', rect: 'rectangles', ellipse: 'ellipses', image: 'images', device: 'devices' })[kindOf(s, p) ?? 'text']
@@ -660,17 +677,21 @@ function TextInspector({ item, sel, lang, fonts, addFont, fontForAll, set, setTe
 }) {
   const weight = item.weight ?? 600, font = item.font ?? FONT
   const known = [...fonts.map((f) => fontFamily(f.name)), ...Object.values(FONTS)]
+  const differs = useDiffers(), one = useContext(Picks).length <= 1
+  const its = (get: (i: Item) => unknown) => differs((s, p) => { const i = itemOf(s, p); return i && get(i) })
   return (
     <>
-      <label>
-        Text
-        {/* another language shows the primary language's words until it has its own */}
-        <textarea rows={3} value={lang ? sel.translations?.[lang]?.items?.[item.id] ?? '' : item.text ?? ''} placeholder={lang ? item.text : undefined}
-          onChange={(e) => setText(e.target.value)} />
-      </label>
+      {one && (
+        <label>
+          Text
+          {/* another language shows the primary language's words until it has its own */}
+          <textarea rows={3} value={lang ? sel.translations?.[lang]?.items?.[item.id] ?? '' : item.text ?? ''} placeholder={lang ? item.text : undefined}
+            onChange={(e) => setText(e.target.value)} />
+        </label>
+      )}
       <div className="field">
         <div className="field-head">
-          Font
+          <span>Font{its((i) => i.font ?? FONT) && <Mixed />}</span>
           <span>
             <button type="button" className="link" title="Use this font for every text in the project" onClick={() => fontForAll(font)}>Apply to all</button>
             {' · '}
@@ -699,12 +720,12 @@ function TextInspector({ item, sel, lang, fonts, addFont, fontForAll, set, setTe
       </div>
       <div className="row">
         <label>
-          Size
+          <span>Size{its((i) => i.size ?? 0.05) && <Mixed />}</span>
           <input type="number" min={1} max={50} step={0.1} value={Math.round((item.size ?? 0.05) * 1000) / 10}
             onChange={(e) => +e.target.value > 0 && set({ size: +e.target.value / 100 })} />
         </label>
         <label>
-          Weight
+          <span>Weight{its((i) => i.weight ?? 600) && <Mixed />}</span>
           <select value={weight} onChange={(e) => set({ weight: +e.target.value })}>
             {!WEIGHTS.some(([w]) => w === weight) && <option value={weight}>{weight}</option>}
             {WEIGHTS.map(([w, n]) => <option key={w} value={w}>{n}</option>)}
@@ -713,9 +734,9 @@ function TextInspector({ item, sel, lang, fonts, addFont, fontForAll, set, setTe
       </div>
       <input type="range" aria-label="Size" min={0.01} max={0.2} step={0.001} value={item.size ?? 0.05} onChange={(e) => set({ size: +e.target.value })} />
       <div className="row">
-        <label>Color<input type="color" value={item.color ?? sel.textColor} onChange={(e) => set({ color: e.target.value })} /></label>
+        <label>Color{differs((s, p) => itemOf(s, p)?.color ?? s.textColor) && <Mixed />}<input type="color" value={item.color ?? sel.textColor} onChange={(e) => set({ color: e.target.value })} /></label>
         <label>
-          Opacity · {Math.round((item.opacity ?? 1) * 100)}%
+          Opacity · {its((i) => i.opacity ?? 1) ? 'Mixed' : `${Math.round((item.opacity ?? 1) * 100)}%`}
           <input type="range" min={0.1} max={1} step={0.01} value={item.opacity ?? 1} onChange={(e) => set({ opacity: +e.target.value })} />
         </label>
       </div>
@@ -737,6 +758,8 @@ function DeviceInspector({ sel, device, lang, edit, idField }: { sel: Slide; dev
   // each device keeps the rest of its own pose
   const setDevice = (patch: Partial<DevicePose>) => edit((s, p) => withShot(s, p, { device: { ...shotOf(s, p).device, ...patch } }, lang))
   const model = DEVICE_BY_ID[pose.model]
+  const differs = useDiffers()
+  const poses = (get: (d: DevicePose) => unknown) => differs((s, p) => get(shotOf(s, p).device))
   const families = [...new Set(DEVICES.map((d) => d.family))]
   return (
     <>
@@ -746,7 +769,7 @@ function DeviceInspector({ sel, device, lang, edit, idField }: { sel: Slide; dev
       )}
       {idField}
       <label>
-        Device
+        <span>Device{poses((d) => d.model) && <Mixed />}</span>
         <select value={model.id} onChange={(e) => setDevice({ model: e.target.value, finish: DEVICE_BY_ID[e.target.value].finishes[0].id })}>
           {families.map((f) => (
             <optgroup key={f} label={f}>
@@ -756,39 +779,39 @@ function DeviceInspector({ sel, device, lang, edit, idField }: { sel: Slide; dev
         </select>
       </label>
       <label>
-        Finish
+        <span>Finish{poses((d) => d.finish) && <Mixed />}</span>
         <select value={pose.finish} onChange={(e) => setDevice({ finish: e.target.value })}>
           {model.finishes.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
         </select>
       </label>
       <p className="hint">Drag the device to move it, the round grip in its middle to turn it, the second grip on a foldable or Mac to fold it, the corners to resize and the top handle to spin. Shift snaps to 15°.</p>
       <label>
-        Device size · {Math.round(pose.size * 100)}%
+        Device size · {poses((d) => d.size) ? 'Mixed' : `${Math.round(pose.size * 100)}%`}
         <input type="range" min={0.3} max={1.2} step={0.01} value={pose.size} onChange={(e) => setDevice({ size: +e.target.value })} />
       </label>
-      <AngleSlider label="Turn" max={180} value={pose.yaw} set={(yaw) => setDevice({ yaw })} />
-      <AngleSlider label="Spin" max={180} value={pose.roll ?? 0} set={(roll) => setDevice({ roll })} />
-      <AngleSlider label="Tilt" max={90} value={pose.pitch} set={(pitch) => setDevice({ pitch })} />
+      <AngleSlider label="Turn" max={180} value={pose.yaw} mixed={poses((d) => d.yaw)} set={(yaw) => setDevice({ yaw })} />
+      <AngleSlider label="Spin" max={180} value={pose.roll ?? 0} mixed={poses((d) => d.roll ?? 0)} set={(roll) => setDevice({ roll })} />
+      <AngleSlider label="Tilt" max={90} value={pose.pitch} mixed={poses((d) => d.pitch)} set={(pitch) => setDevice({ pitch })} />
       {(model.fold || model.laptop) && (
         <label>
-          {model.laptop ? 'Lid' : 'Fold'} · {pose.fold}°
+          {model.laptop ? 'Lid' : 'Fold'} · {poses((d) => d.fold) ? 'Mixed' : `${pose.fold}°`}
           <input type="range" min={0} max={180} value={pose.fold} onChange={(e) => setDevice({ fold: +e.target.value })} />
         </label>
       )}
-      <label><input type="checkbox" checked={pose.shadow !== false} onChange={(e) => setDevice({ shadow: e.target.checked })} />Shadow</label>
-      <label><input type="checkbox" checked={pose.reflections !== false} onChange={(e) => setDevice({ reflections: e.target.checked })} />Reflections</label>
+      <label><input type="checkbox" checked={pose.shadow !== false} onChange={(e) => setDevice({ shadow: e.target.checked })} />Shadow{poses((d) => d.shadow !== false) && <Mixed />}</label>
+      <label><input type="checkbox" checked={pose.reflections !== false} onChange={(e) => setDevice({ reflections: e.target.checked })} />Reflections{poses((d) => d.reflections !== false) && <Mixed />}</label>
     </>
   )
 }
 
 /** A −max…max° slider that snaps to 0 near it; Reset or a double-click sets it back to 0. */
-function AngleSlider({ label, max, value, set }: { label: string; max: number; value: number; set: (v: number) => void }) {
+function AngleSlider({ label, max, value, mixed, set }: { label: string; max: number; value: number; mixed?: boolean; set: (v: number) => void }) {
   const keys = useRef(false) // arrow keys step 1° and must not snap back, or they could never leave 0
   return (
     <div className="field">
       <div className="field-head">
-        {label} · {value}°
-        {value !== 0 && <button type="button" className="link" onClick={() => set(0)}>Reset</button>}
+        {label} · {mixed ? 'Mixed' : `${value}°`}
+        {(mixed || value !== 0) && <button type="button" className="link" onClick={() => set(0)}>Reset</button>}
       </div>
       <input type="range" aria-label={label} min={-max} max={max} value={value} onDoubleClick={() => set(0)}
         onKeyDown={() => (keys.current = true)} onPointerDown={() => (keys.current = false)}

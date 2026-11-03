@@ -744,4 +744,5 @@ input[type='checkbox'].switch:checked::after { translate: 14px 0; transform: non
   padding: 8px 14px; border-radius: 8px; background: var(--panel); border: 1px solid var(--border);
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.18); font-size: 12.5px; cursor: default;
 }
+.inspector-body .mixed { color: var(--muted); font-weight: 400; }
 .inspector-body .taken { color: #ff453a; font-size: 11.5px; }
