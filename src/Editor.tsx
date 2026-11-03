@@ -526,6 +526,8 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
               index={slides.indexOf(sel)}
               size={size}
               update={(patch) => update(sel.id, patch)}
+              slideCount={new Set(selection.map((x) => x.slide)).size}
+              updateSlides={(patch) => setSlides((all) => all.map((s) => (selection.some((x) => x.slide === s.id) ? { ...s, ...patch } : s)))}
               shotIdUser={(id, part) => {
                 for (const t of project.targets) for (const [i, s] of t.slides.entries()) for (const p of layersOf(s))
                   if (shotIdOf(s, p) === id && !(s.id === sel.id && p === part)) return `${PLATFORMS[t.platform].label} slide ${i + 1} (${partName(s, p)})`
@@ -547,7 +549,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
 }
 
 /** The picked element's settings (the last one, when several are picked), then the slide's own. */
-function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update, shotIdUser }: {
+function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update, slideCount, updateSlides, shotIdUser }: {
   sel: Slide
   fonts: ProjectFont[] // the project's own
   addFont: (file: File) => Promise<ProjectFont>
@@ -558,6 +560,9 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
   index: number
   size: readonly [number, number] // the slide in px
   update: (patch: Partial<Slide>) => void
+  slideCount: number // slides with something picked
+  /** Sets the slide's own settings (background, …) on every picked slide. */
+  updateSlides: (patch: Partial<Slide>) => void
   /** Where else in the project a screenshot ID is used, if anywhere: IDs are unique. */
   shotIdUser: (id: string, part: Part) => string | null
 }) {
@@ -593,18 +598,19 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
         </>
       )}
 
-      <h2 className={part ? 'inspector-slide' : undefined}>Slide {index + 1}</h2>
+      <h2 className={part ? 'inspector-slide' : undefined}>{slideCount > 1 ? `${slideCount} slides` : `Slide ${index + 1}`}</h2>
+      {slideCount > 1 && <p className="hint">Background, text color and gradient angle change on all {slideCount} picked slides.</p>}
       <div className="row">
-        <label>Background<input type="color" value={sel.bg1} onChange={(e) => update({ bg1: e.target.value })} /></label>
-        <label>&nbsp;<input type="color" value={sel.bg2} onChange={(e) => update({ bg2: e.target.value })} /></label>
-        <label>Text<input type="color" value={sel.textColor} onChange={(e) => update({ textColor: e.target.value })} /></label>
+        <label>Background<input type="color" value={sel.bg1} onChange={(e) => updateSlides({ bg1: e.target.value })} /></label>
+        <label>&nbsp;<input type="color" value={sel.bg2} onChange={(e) => updateSlides({ bg2: e.target.value })} /></label>
+        <label>Text<input type="color" value={sel.textColor} onChange={(e) => updateSlides({ textColor: e.target.value })} /></label>
       </div>
       <div className="field">
         <div className="field-head">
           Gradient angle · {sel.angle}°
-          {sel.angle !== 0 && <button type="button" className="link" onClick={() => update({ angle: 0 })}>Reset</button>}
+          {sel.angle !== 0 && <button type="button" className="link" onClick={() => updateSlides({ angle: 0 })}>Reset</button>}
         </div>
-        <input type="range" aria-label="Gradient angle" min={0} max={360} value={sel.angle} onDoubleClick={() => update({ angle: 0 })} onChange={(e) => update({ angle: +e.target.value })} />
+        <input type="range" aria-label="Gradient angle" min={0} max={360} value={sel.angle} onDoubleClick={() => updateSlides({ angle: 0 })} onChange={(e) => updateSlides({ angle: +e.target.value })} />
       </div>
     </div>
   )
