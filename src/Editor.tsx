@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, Fragment, useContext, useEffect, useRef, useState } from 'react'
 import { Board } from './Board'
-import { DEVICES, DEVICE_BY_ID } from './devices/models'
+import { DEVICES, DEVICE_BY_ID, restFold } from './devices/models'
 import type { DevicePose } from './devices/render3d'
 import { Chat } from './Chat'
 import { Themes } from './Themes'
@@ -167,20 +167,24 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     const on = selection.length ? slides.filter((s) => selection.some((x) => x.slide === s.id)) : slides
     setSelection(on.flatMap((s) => layersOf(s).map((part) => ({ slide: s.id, part }))))
   }
-  /** Adds an object (or puts back a deleted built-in) on each picked slide, or the first; a new text is ready to type. */
-  const insert = (make: (s: Slide) => Item | Part) => {
+  /** Adds an object (or puts back a deleted built-in) on each picked slide, or the first, which also get `patch`; a new text is ready to type. */
+  const insert = (make: (s: Slide) => Item | Part, patch?: (s: Slide) => Partial<Slide>) => {
     const ids = new Set(selection.map((x) => x.slide))
     const made = new Map(slides.filter((s, i) => (ids.size ? ids.has(s.id) : i === 0)).map((s) => [s.id, make(s)]))
-    setSlides((all) => all.map((s) => (made.has(s.id) ? { ...s, ...added(s, made.get(s.id)!) } : s)))
+    setSlides((all) => all.map((s) => (made.has(s.id) ? { ...s, ...patch?.(s), ...added(s, made.get(s.id)!) } : s)))
     const picked = [...made].map(([slide, p]) => ({ slide, part: typeof p === 'string' ? p : p.id }))
     setSelection(picked)
     const first = [...made.values()][0]
     setEditing(typeof first !== 'string' && first.kind === 'text' ? picked[0] : null)
   }
   // a device mockup puts back the slide's own device if it was deleted, else adds another
-  const insertDevice = () => insert((s) => layersOf(s).includes('device')
-    ? newItem('device', undefined, poseFor(target.platform, { size: PLATFORMS[target.platform].device.size! * 0.7 }))
-    : 'device')
+  const insertDevice = (model: string) => {
+    const picked = { model, finish: DEVICE_BY_ID[model].finishes[0].id, fold: restFold(DEVICE_BY_ID[model]) }
+    insert((s) => layersOf(s).includes('device')
+      ? newItem('device', undefined, poseFor(target.platform, { size: PLATFORMS[target.platform].device.size! * 0.7, ...picked }))
+      : 'device', (s) => (layersOf(s).includes('device') ? {} : { device: { ...s.device, ...picked } })) // a put-back device becomes the picked model too
+  }
+  const [deviceMenu, setDeviceMenu] = useState<{ x: number; y: number } | null>(null)
 
   const copy = () => {
     const picked = selection.flatMap(({ slide, part }) => {
@@ -387,17 +391,50 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       {/* outside the panel, which scrolls: inside it'd be clipped and scroll away */}
       <Resizer edge="right" set={(x) => setToolsW(Math.min(420, Math.max(180, x)))} />
       <aside className="tools">
-        <h3>Add</h3>
+        <h3>Elements</h3>
+        <details className="add-section" open>
+        <summary>Text</summary>
         <div className="add-grid">
           <button onClick={() => insert(() => newItem('text'))}><Icon d="M5 6V4h14v2M12 4v16M9 20h6" />Text</button>
+          {TEXT_PRESETS.map(([label, preset]) => (
+            <button key={label} onClick={() => insert(() => ({ ...newItem('text'), text: label, ...preset }))}>
+              <span className="glyph" style={{ fontWeight: preset.weight, fontSize: 10 + preset.size * 100 }}>Aa</span>{label}
+            </button>
+          ))}
+        </div>
+        </details>
+        <details className="add-section" open>
+        <summary>Media</summary>
+        <div className="add-grid">
           <button onClick={async () => {
             const [f] = await openFiles(IMAGE_FILES)
             if (f) { const img = await loadImage(f); insert(() => newItem('image', img)) }
           }}><Icon d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9.5h.01" />Image</button>
-          <button onClick={insertDevice}><Icon d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM11 18h2" />Device</button>
-          <button onClick={() => insert(() => newItem('rect'))}><Icon d="M4 6h16v12H4z" />Rectangle</button>
-          <button onClick={() => insert(() => newItem('ellipse'))}><Icon d="M12 5c4.4 0 8 3.1 8 7s-3.6 7-8 7-8-3.1-8-7 3.6-7 8-7z" />Ellipse</button>
+          <button onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setDeviceMenu({ x: r.left, y: r.bottom + 4 }) }}><Icon d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM11 18h2" />Device</button>
         </div>
+        </details>
+        {(['Shapes', 'Badges', 'Icons'] as const).map((group) => (
+          <details key={group} className="add-section">
+            <summary>{group}</summary>
+            <div className="add-grid">
+              {group === 'Shapes' && (
+                <>
+                  <button onClick={() => insert(() => newItem('rect'))}><Icon d="M4 6h16v12H4z" />Rectangle</button>
+                  <button onClick={() => insert(() => newItem('ellipse'))}><Icon d="M12 5c4.4 0 8 3.1 8 7s-3.6 7-8 7-8-3.1-8-7 3.6-7 8-7z" />Ellipse</button>
+                </>
+              )}
+              {Object.entries(SHAPES).filter(([, s]) => s.group === group).map(([name, s]) => (
+                <button key={name} onClick={() => insert(() => newItem('shape', undefined, undefined, name))}>
+                  <svg viewBox={`0 0 ${s.vw} ${s.vh}`} width="20" height="20" aria-hidden
+                    {...(s.stroke ? { fill: 'none', stroke: 'currentColor', strokeWidth: s.stroke, strokeLinecap: 'round', strokeLinejoin: 'round' } : { fill: 'currentColor' })}>
+                    <path d={s.d} />
+                  </svg>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </details>
+        ))}
 
         <h3>Slides <span>{slides.length}</span></h3>
         <ol className="slide-list">
@@ -469,6 +506,20 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
           <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M12 5v14M5 12h14" /></svg>
         </button>
       </Board>
+      {deviceMenu && (
+        <div className="menu-backdrop" onPointerDown={() => setDeviceMenu(null)}>
+          <div className="menu" ref={(el) => { if (el) el.style.top = `${Math.max(8, Math.min(deviceMenu.y, innerHeight - el.offsetHeight - 8))}px` }}
+            style={{ left: deviceMenu.x, top: deviceMenu.y }} onPointerDown={(e) => e.stopPropagation()} onClick={() => setDeviceMenu(null)}>
+            {[...new Set(DEVICES.map((d) => d.family))].map((f, n) => (
+              <Fragment key={f}>
+                {n > 0 && <hr />}
+                <span className="menu-head">{f}</span>
+                {DEVICES.filter((d) => d.family === f).map((d) => <button key={d.id} onClick={() => insertDevice(d.id)}>{d.label}</button>)}
+              </Fragment>
+            ))}
+          </div>
+        </div>
+      )}
       {addMenu && (
         <div className="menu-backdrop" onPointerDown={() => setAddMenu(null)}>
           <div className="menu" style={{ left: addMenu.x, top: addMenu.y }} onPointerDown={(e) => e.stopPropagation()} onClick={() => setAddMenu(null)}>
@@ -675,6 +726,13 @@ function ScrubNumber({ axis, value, onChange }: { axis: 'x' | 'y'; value: number
     </label>
   )
 }
+
+/** Texts with their size and weight set, as the templates use them. */
+const TEXT_PRESETS = [
+  ['Headline', { size: 0.085, weight: 800 }],
+  ['Subtitle', { size: 0.042, weight: 500 }],
+  ['Caption', { size: 0.03, weight: 500, opacity: 0.8 }],
+] as const satisfies readonly (readonly [string, Partial<Item> & { size: number; weight: number }])[]
 
 const WEIGHTS = [[300, 'Light'], [400, 'Regular'], [500, 'Medium'], [600, 'Semibold'], [700, 'Bold'], [800, 'Heavy'], [900, 'Black']] as const
 

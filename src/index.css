@@ -238,6 +238,7 @@ label {
 .menu button { display: flex; justify-content: space-between; gap: 16px; background: none; border: 0; border-radius: 4px; padding: 5px 10px; text-align: left; }
 .menu button:hover:not(:disabled) { background: var(--accent); color: #fff; }
 .menu kbd { font: inherit; opacity: 0.6; }
+.menu .menu-head { padding: 4px 10px 2px; font-size: 11px; color: var(--muted); }
 .menu hr { width: 100%; border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
 .tools {
   grid-area: tools;
@@ -260,6 +261,13 @@ label {
 .add-grid button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px 8px; font-size: 11px; color: var(--muted); }
 .add-grid button:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
 .add-grid svg { color: var(--text); }
+.add-grid .glyph { display: grid; place-items: center; height: 20px; color: var(--text); line-height: 1; }
+.add-section summary { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 11px; font-weight: 500; color: var(--muted); cursor: pointer; list-style: none; user-select: none; }
+.add-section summary::-webkit-details-marker { display: none; }
+.add-section summary::before { content: '›'; display: inline-block; width: 8px; transition: rotate 0.15s; }
+.add-section[open] summary::before { rotate: 90deg; }
+.add-section summary:hover { color: var(--text); }
+.add-section[open] > .add-grid { margin-top: 6px; }
 .tools .restore { font-size: 12px; background: none; border-style: dashed; color: var(--muted); }
 .tools .restore:hover:not(:disabled) { color: var(--text); }
 .slide-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
