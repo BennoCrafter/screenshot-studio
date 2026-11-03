@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { loadImage } from './project'
+import { loadImage, withFonts, type ProjectFont } from './project'
 import { drawSlide, layersOf, PLATFORMS, sizeOf, type Platform, type Slide } from './render'
 import { loadCustom, saveCustom, toTarget, type Template, type TargetData } from './templates'
 import macShot from './builtin/fillers/mac.jpg'
@@ -11,11 +11,11 @@ let fillers: Promise<{ phone: HTMLImageElement[]; mac: HTMLImageElement[] }> | u
 const getFillers = () => (fillers ??= Promise.all([load(PHONE_SHOTS), load([macShot])]).then(([phone, mac]) => ({ phone, mac })))
 
 /** The template's first slides drawn small, its own screenshots or fillers in the devices; color swatches until they're ready. */
-function Preview({ data, count }: { data: TargetData; count: number }) {
+function Preview({ data, fonts, count, height = 240 }: { data: TargetData; fonts?: ProjectFont[]; count: number; height?: number }) {
   const [slides, setSlides] = useState<Slide[]>()
   useEffect(() => {
     let live = true
-    Promise.all([toTarget({ ...data, slides: data.slides.slice(0, count) }), getFillers()]).then(([t, f]) => {
+    Promise.all([toTarget({ ...data, slides: data.slides.slice(0, count) }), getFillers(), withFonts({ fonts })]).then(([t, f]) => {
       const pool = data.platform === 'mac' ? f.mac : f.phone
       const fill = (n: number) => pool[n % pool.length]
       if (live) setSlides(t.slides.map((s, i) => ({
@@ -24,8 +24,8 @@ function Preview({ data, count }: { data: TargetData; count: number }) {
       })))
     })
     return () => { live = false }
-  }, [data, count])
-  if (slides) return slides.map((s, i) => <Thumb key={i} s={s} size={sizeOf(data)} />)
+  }, [data, fonts, count])
+  if (slides) return slides.map((s, i) => <Thumb key={i} s={s} size={sizeOf(data)} height={height} />)
   return data.slides.slice(0, count).map((s, i) => (
     <span key={i} style={{ background: `linear-gradient(${s.angle}deg, ${s.bg1}, ${s.bg2})`, color: s.textColor }}>
       {layersOf(s).map((p) => s.items?.find((i) => i.id === p && i.kind === 'text')?.text).find(Boolean)}
@@ -33,14 +33,14 @@ function Preview({ data, count }: { data: TargetData; count: number }) {
   ))
 }
 
-function Thumb({ s, size: [w, h] }: { s: Slide; size: readonly [number, number] }) {
+function Thumb({ s, size: [w, h], height }: { s: Slide; size: readonly [number, number]; height: number }) {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     const c = ref.current!
-    c.height = 240 // about twice the card's height, for sharp Retina thumbnails
+    c.height = height // about twice the shown height, for sharp Retina thumbnails
     c.width = Math.round((w / h) * c.height)
     drawSlide(c.getContext('2d')!, s, c.width, c.height)
-  }, [s, w, h])
+  }, [s, w, h, height])
   return <canvas ref={ref} />
 }
 
@@ -57,7 +57,7 @@ export function TemplateCard({ t, platform, selected, onPick, onDelete }: {
   return (
     <div className={selected ? 'tpl-card selected' : 'tpl-card'}>
       <button className={wide ? 'tpl-preview wide' : 'tpl-preview'} onClick={onPick}>
-        <Preview data={shown} count={wide ? 2 : 4} />
+        <Preview data={shown} fonts={t.fonts} count={wide ? 2 : 4} />
       </button>
       <div className="tpl-meta">
         <strong>{t.name}</strong>
@@ -67,6 +67,22 @@ export function TemplateCard({ t, platform, selected, onPick, onDelete }: {
     </div>
   )
 }
+
+/** A template from Open Screenshot Generator's catalog: their picture of its screens. */
+export function StoreCard({ name, preview, selected, loading, onPick }: { name: string; preview: string; selected?: boolean; loading?: boolean; onPick: () => void }) {
+  return (
+    <div className={selected ? 'tpl-card selected' : 'tpl-card'}>
+      <button className="tpl-preview" onClick={onPick}><img src={preview} alt="" loading="lazy" /></button>
+      <div className="tpl-meta">
+        <strong>{name}</strong>
+        <small>{loading ? 'Loading…' : 'by Open Screenshot Generator'}</small>
+      </div>
+    </div>
+  )
+}
+
+/** Every slide of a template's set, large. */
+export const BigPreview = ({ data, fonts }: { data: TargetData; fonts?: ProjectFont[] }) => <Preview data={data} fonts={fonts} count={data.slides.length} height={1200} />
 
 /** Saved templates, kept in sync with storage (a file on the desktop, localStorage in the browser). */
 export function useCustomTemplates() {

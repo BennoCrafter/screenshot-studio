@@ -34,7 +34,7 @@ async function loadFont({ name, data }: ProjectFont) {
   faces.set(name, { face, data })
 }
 /** A project's fonts loaded before it's shown; one that won't load leaves its texts in the system font. */
-export const withFonts = async (p: Project) => {
+export const withFonts = async <P extends Pick<Project, 'fonts'>>(p: P) => {
   await Promise.all((p.fonts ?? []).map((f) => loadFont(f).catch(() => {})))
   return p
 }
@@ -194,7 +194,8 @@ async function saveFiles(p: Project) {
   // write then rename, so a crash mid-save never leaves a half-written project
   await writeTextFile(`${dir}/project.json.tmp`, JSON.stringify(stored), opt)
   await rename(`${dir}/project.json.tmp`, `${dir}/project.json`, { oldPathBaseDir: opt.baseDir, newPathBaseDir: opt.baseDir })
-  for (const e of await readDir(dir, opt)) if (!used.has(e.name)) await remove(`${dir}/${e.name}`, opt)
+  // skip dotfiles (.DS_Store): not ours, and the fs scope forbids touching them
+  for (const e of await readDir(dir, opt)) if (!used.has(e.name) && !e.name.startsWith('.')) await remove(`${dir}/${e.name}`, opt)
 }
 
 async function readStored(id: string): Promise<WithImages<string | null>> {

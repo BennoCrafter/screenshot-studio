@@ -2,10 +2,11 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ask, openTextFile } from './native'
 import { deleteProject, listProjects, PROJECT_FILE, withFonts, type Project, type ProjectSummary } from './project'
 import { PLATFORMS, type Platform } from './render'
-import { TemplateCard, useCustomTemplates } from './TemplateGallery'
+import { loadStore, STORE, storeTemplate } from './openscrgen'
+import { BigPreview, StoreCard, TemplateCard, useCustomTemplates } from './TemplateGallery'
 import { ALL_PLATFORMS, BUILT_IN, toTarget, type Template } from './templates'
 
-type Tab = 'all' | Platform
+type Tab = 'all' | Platform | 'store' // store: Open Screenshot Generator's templates
 
 const when = (t: number) =>
   new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(t)
@@ -79,17 +80,50 @@ export function StartPage({ onOpen, onCreate, onImport }: { onOpen: (id: string)
 function Chooser({ onCancel, onCreate }: { onCancel: () => void; onCreate: (p: Project) => void }) {
   const [custom, store] = useCustomTemplates()
   const [tab, setTab] = useState<Tab>('all')
-  const templates = [...BUILT_IN, ...custom].filter((t) => tab === 'all' || t.targets[tab])
+  const [query, setQuery] = useState('')
+  const search = useRef<HTMLInputElement>(null)
+  const matches = (...texts: (string | undefined)[]) => texts.some((x) => x?.toLowerCase().includes(query.trim().toLowerCase()))
+  const templates = tab === 'store' ? [] : [...BUILT_IN, ...custom].filter((t) => (tab === 'all' || t.targets[tab]) && matches(t.name, t.description, t.author))
+  useEffect(() => {
+    // ⌘F / Ctrl+F finds a template while the chooser is open
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'f' || !(e.metaKey || e.ctrlKey) || !search.current?.closest('dialog')?.open) return
+      e.preventDefault()
+      search.current.select()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const [picked, setPicked] = useState<Template>(BUILT_IN[1])
   const [name, setName] = useState('My App')
   const available = ALL_PLATFORMS.filter((p) => picked.targets[p])
-  const defaults = (t: Template, tb: Tab) => ALL_PLATFORMS.filter((p) => t.targets[p] && (tb === 'all' || tb === p))
+  const defaults = (t: Template, tb: Tab) => ALL_PLATFORMS.filter((p) => t.targets[p] && (tb === 'all' || tb === 'store' || tb === p))
+  const [loading, setLoading] = useState<string>() // a store template's file, while it downloads
+  const [failed, setFailed] = useState<string>()
+  const zoom = useRef<HTMLDialogElement>(null)
+  const [catalog, setCatalog] = useState(STORE)
+  useEffect(() => {
+    if (tab === 'store') loadStore().then(setCatalog)
+  }, [tab])
   const [chosen, setChosen] = useState<Platform[]>(defaults(picked, tab))
 
   const pick = (t: Template, tb = tab) => {
     setPicked(t)
     setChosen(defaults(t, tb))
   }
+  const pickStore = async (file: string) => {
+    setLoading(file)
+    setFailed(undefined)
+    try {
+      pick(await storeTemplate(file), 'store')
+    } catch {
+      setFailed("Couldn't download that template. Check your connection and try again.")
+    } finally {
+      setLoading((f) => (f === file ? undefined : f))
+    }
+  }
+  // a second click on the picked template shows it large
+  const pickOrZoom = (id: string, then: () => void) => (id === picked.id ? zoom.current!.showModal() : then())
   const create = async () =>
     onCreate(await withFonts({
       id: crypto.randomUUID(),
@@ -102,36 +136,75 @@ function Chooser({ onCancel, onCreate }: { onCancel: () => void; onCreate: (p: P
   return (
     <>
       <h2>Choose a template for your new project</h2>
-      <nav className="platform-tabs big">
-        {(['all', ...ALL_PLATFORMS] as Tab[]).map((t) => (
-          <span key={t} className={tab === t ? 'on' : ''}>
-            <button
-              onClick={() => {
-                setTab(t)
-                const first = [...BUILT_IN, ...custom].find((x) => x.id === picked.id && (t === 'all' || x.targets[t]))
-                  ?? [...BUILT_IN, ...custom].find((x) => t === 'all' || x.targets[t])!
-                pick(first, t)
-              }}
-            >
-              {t === 'all' ? 'Multiplatform' : PLATFORMS[t].label}
-            </button>
-          </span>
-        ))}
-      </nav>
+      <div className="chooser-tabs">
+        <nav className="platform-tabs big">
+          {(['all', ...ALL_PLATFORMS] as ('all' | Platform)[]).map((t) => (
+            <span key={t} className={tab === t ? 'on' : ''}>
+              <button
+                onClick={() => {
+                  setTab(t)
+                  const first = [...BUILT_IN, ...custom].find((x) => x.id === picked.id && (t === 'all' || x.targets[t]))
+                    ?? [...BUILT_IN, ...custom].find((x) => t === 'all' || x.targets[t])!
+                  pick(first, t)
+                }}
+              >
+                {t === 'all' ? 'Multiplatform' : PLATFORMS[t].label}
+              </button>
+            </span>
+          ))}
+        </nav>
+        {/* others' templates, apart from ours */}
+        <nav className="platform-tabs big">
+          <span className={tab === 'store' ? 'on' : ''}><button onClick={() => setTab('store')}>Open Screenshot Generator</button></span>
+        </nav>
+        <input
+          ref={search}
+          type="search"
+          className="tpl-search"
+          placeholder="Search templates"
+          aria-label="Search templates"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Escape' && query && (e.preventDefault(), setQuery(''))}
+        />
+      </div>
 
       <div className="tpl-grid chooser-grid">
-        {templates.map((t) => (
-          <TemplateCard
-            key={t.id}
-            t={t}
-            platform={tab === 'all' ? undefined : tab}
-            selected={t.id === picked.id}
-            onPick={() => pick(t)}
-            onDelete={t.custom ? () => store(custom.filter((c) => c.id !== t.id)) : undefined}
+        {/* ours first, then the ones saved from projects */}
+        {[templates.filter((t) => !t.custom), templates.filter((t) => t.custom)].map((group, g) => group.length > 0 && [
+          <h3 key={g} className="tpl-group">{g ? 'Your templates' : 'Built-in'}</h3>,
+          ...group.map((t) => (
+            <TemplateCard
+              key={t.id}
+              t={t}
+              platform={tab === 'all' || tab === 'store' ? undefined : tab}
+              selected={t.id === picked.id}
+              onPick={() => pickOrZoom(t.id, () => pick(t))}
+              onDelete={t.custom ? () => store(custom.filter((c) => c.id !== t.id)) : undefined}
+            />
+          )),
+        ])}
+        {tab === 'store' && catalog.filter((t) => matches(t.file)).map(({ file, preview }) => (
+          <StoreCard
+            key={file}
+            name={file.replace(/^mac-/, '').split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')}
+            preview={preview}
+            selected={picked.id === `openscrgen-${file}` || loading === file}
+            loading={loading === file}
+            onPick={() => pickOrZoom(`openscrgen-${file}`, () => pickStore(file))}
           />
         ))}
       </div>
-      <p className="hint">{picked.description}</p>
+      {query.trim() && !(tab === 'store' ? catalog.some((t) => matches(t.file)) : templates.length) && <p className="hint">No templates match “{query.trim()}”.</p>}
+      <p className="hint">{failed ?? picked.description}</p>
+      <dialog ref={zoom} className="tpl-zoom" onClick={(e) => e.target === zoom.current && zoom.current!.close()}>
+        <h3>{picked.name}</h3>
+        <div className="slides">
+          {/* the platforms ticked below, or its first if none */}
+          {(chosen.length ? chosen : available.slice(0, 1)).map((p) => <BigPreview key={p} data={picked.targets[p]!} fonts={picked.fonts} />)}
+        </div>
+        <form method="dialog" className="chooser-footer"><span className="spacer" /><button className="primary">Close</button></form>
+      </dialog>
 
       <form
         className="chooser-footer"

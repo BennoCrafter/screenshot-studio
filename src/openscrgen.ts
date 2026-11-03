@@ -3,7 +3,8 @@
 
 import { toDataUrl, type ProjectFont, type WithImages } from './project'
 import { FONT, PLATFORMS, SIZES, type Item, type Platform, type SizeName } from './render'
-import { poseFor } from './templates'
+import type { DevicePose } from './devices/render3d'
+import { poseFor, type Template } from './templates'
 
 type Data = WithImages<string | null>
 type Slide = Data['targets'][number]['slides'][number]
@@ -13,6 +14,59 @@ const SITE = 'https://editor.openscrgen.app' // their built-in templates point a
 
 /** True for a file Open Screenshot Generator saved or ships as a template. */
 export const isOpenScrGen = (data: any) => Array.isArray(data?.projectData)
+
+// shortcut: their catalog, copied from the editor's bundle (it has no index file); refresh when they add templates
+const PHONE = ['somnia-sleep', 'kassa-money', 'pixara-ai', 'amoura-dating', 'scrappi-journal', 'plannio-student', 'calora-macros', 'puzzlo-word',
+  'sproutly-parenting', 'zapio-remote', 'runzo-coach', 'nookly-focus', 'playpop-intro', 'lotus-calm', 'cvcraft-resume', 'nutrio-fitness', 'zenfit-yoga',
+  'blogio-articles', 'breathora-breathing', 'vowly-wedding', 'verda-eco', 'connectly-chat', 'budgetly-finance', 'listly-tasks', 'inboxly-mail',
+  'darzi-studio', 'beauty-glam', 'castique-podcast', 'inquira', 'zyluxe-beauty', 'nexmind', 'endless-communities', 'kicksy-sneakers', 'endless-podcasts',
+  'answerly-ai', 'lumina-search', 'streamio-movies', 'readly-books', 'luxe-glow', 'cryptix', 'feasto', 'storybuzz-kids', 'trackio-fitness',
+  'streamio-binge', 'roomora-home', 'playverse-games', 'voyago-travel', 'finexa-crypto', 'flixio-kids', 'listenly-audio', 'tripora-travel', 'tunio-music',
+  'coinly-crypto', 'stockio-invest', 'threadly-social', 'beatforge-studio', 'podly-podcasts', 'cinevault-stream', 'sereno-mind', 'droply-habits',
+  'zeeb-fashion', 'lingua-learn']
+const MAC = ['mac-flowdesk', 'mac-pulseform', 'mac-skyfit', 'mac-inkpress', 'mac-everglade', 'mac-festivo', 'mac-terra', 'mac-loopchat', 'mac-ledgerly',
+  'mac-boardly', 'mac-postbox', 'mac-atelier']
+
+export interface StoreEntry { file: string; platform: Platform; preview: string }
+const entries = (phone: string[], mac: string[]): StoreEntry[] =>
+  [...phone.map((file) => ({ file, platform: 'iphone' as Platform })), ...mac.map((file) => ({ file, platform: 'mac' as Platform }))]
+    .map((t) => ({ ...t, preview: `${SITE}/data/projects/previews/${t.file}.png` }))
+
+/** Their built-in templates: file name, platform and picture of its screens. */
+export const STORE = entries(PHONE, MAC)
+
+let latest: Promise<StoreEntry[]> | undefined
+/** Their catalog as their editor lists it now, read from its page script; the copy above when that fails or changes shape. */
+export const loadStore = () => (latest ??= (async () => {
+  const html = await (await fetch(SITE)).text()
+  const page = html.match(/\/_next\/static\/chunks\/app\/page-[\w-]+\.js/)?.[0]
+  if (!page) return STORE
+  const js = await (await fetch(SITE + page)).text()
+  const files = (id: string) => [...(js.match(new RegExp(`\\{id:"${id}",label:[^]*?files:\\[([^\\]]*)\\]`))?.[1].matchAll(/"([\w-]+)\.json"/g) ?? [])].map((m) => m[1])
+  const phone = files('screenshots'), mac = files('mac')
+  return phone.length && mac.length ? entries(phone, mac) : STORE
+})().catch(() => STORE))
+
+const fetched = new Map<string, Promise<Template>>()
+/** One of their built-in templates as a template here, its screenshots still on their site. */
+export const storeTemplate = (file: string) => {
+  if (!fetched.has(file)) {
+    const t = fetch(`${SITE}/data/projects/${file}.json`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${file}: ${r.status}`))))
+      .then(async (data) => ({ ...asTemplate(await fromOpenScrGen(data), data.description ?? '', 'Open Screenshot Generator'), id: `openscrgen-${file}` }))
+    t.catch(() => fetched.delete(file)) // try again next time, once back online
+    fetched.set(file, t)
+  }
+  return fetched.get(file)!
+}
+
+/** A converted project as a template. */
+export const asTemplate = (project: Data, description: string, author: string): Template => ({
+  id: `openscrgen-${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'openscrgen'}`,
+  name: project.name, description, author,
+  targets: Object.fromEntries(project.targets.map(({ slides, ...t }) => [t.platform, { ...t, slides: slides.map(({ id: _, ...s }) => s) }])),
+  fonts: project.fonts,
+})
 
 export async function fromOpenScrGen(data: any): Promise<Data> {
   const mime = Object.fromEntries((data.media ?? []).map((m: { id: string; mimeType: string }) => [m.id, m.mimeType]))
@@ -54,9 +108,10 @@ export async function fromOpenScrGen(data: any): Promise<Data> {
 
       if (e.type === 'device' || e.type === 'video-device') {
         const shot = src(e.screenshotSrc ?? e.posterSrc)
-        const yaw = e.styleType?.endsWith('left') ? 20 : e.styleType?.endsWith('right') ? -20 : 0
+        const model = modelFor(e.deviceType)
         // their rotation is CSS's, clockwise; roll turns the 3D device the other way
-        const pose = poseFor(platform, { model: modelFor(e.deviceType), size: bw / W, roll: -(e.rotation || 0), yaw })
+        // their laptop pictures are mostly margin and perspective: the lid is about 70% of the picture's width in every pose
+        const pose = poseFor(platform, { model, roll: -(e.rotation || 0), ...turnOf(e, model), size: (bw / W) * (model === 'macbook-pro-14' ? 0.7 : 1) })
         if (!slide.layers!.includes('device')) {
           // the first device is the slide's own; its x, y are offsets from the middle
           slide.device = { ...pose, x: cx - 0.5, y: cy - 0.5 }
@@ -117,6 +172,20 @@ function sizeFor(w: number, h: number): { platform: Platform; size: SizeName; la
   }
   const platform = (Object.keys(PLATFORMS) as Platform[]).find((p) => PLATFORMS[p].sizes.includes(best))!
   return { platform, size: best }
+}
+
+// Their 3D laptops are pictures in five poses, each turned to the left or right; these are our angles that look like them.
+// Pitch is on top of the lid's 110° opening, which alone shows the keyboard from 20° above: front shows it from about 7°.
+const POSES: Record<string, { yaw: number; pitch: number }> = {
+  front: { yaw: 0, pitch: -13 }, upright: { yaw: 25, pitch: -10 }, side: { yaw: 38, pitch: -10 }, tilted: { yaw: 25, pitch: 19 }, reclined: { yaw: 25, pitch: 40 },
+}
+/** Yaw (and pitch for laptops) for their style: '3d-left' turns the device's left side to us, which is a positive yaw. */
+function turnOf(e: El, model: string): Partial<DevicePose> {
+  const side = e.styleType?.endsWith('left') ? 1 : e.styleType?.endsWith('right') ? -1 : 0
+  if (!side) return {}
+  if (model !== 'macbook-pro-14') return { yaw: 20 * side }
+  const { yaw, pitch } = POSES[e.pose3d] ?? POSES.upright
+  return { yaw: yaw * side, pitch, ...(e.frameColor3d && { finish: e.frameColor3d === 'white' ? 'silver' : 'space-black' }) }
 }
 
 // shortcut: phones (iPhone, Android, watch) all become the iPhone model; add models here if more get added to DEVICES

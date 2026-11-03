@@ -115,7 +115,7 @@ function design(id: string, name: string, description: string, specs: Spec[], pl
     const size = PLATFORMS[platform].sizes[0]
     targets[platform] = { platform, size, slides: specs.map((s) => slide(platform, size, { ...s, pose: { ...s.pose, ...perPlatform[platform] } })) }
   }
-  return { id, name, description, targets }
+  return { id, name, description, author: 'Screenshot Studio', targets }
 }
 
 /** A built-in design as builtin/templates.json describes it; each slide takes the template's theme. */

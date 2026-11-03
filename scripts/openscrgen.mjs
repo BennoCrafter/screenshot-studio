@@ -49,7 +49,7 @@ const vite = await createServer({
     'export function renderDevice() { return { width: 1, height: 1, flatHeight: 1, canvas: null } }\nfunction unused(') : undefined }],
 })
 try {
-  const { fromOpenScrGen } = await vite.ssrLoadModule('/src/openscrgen.ts')
+  const { fromOpenScrGen, asTemplate } = await vite.ssrLoadModule('/src/openscrgen.ts')
   const { data, author } = await source()
   const project = await fromOpenScrGen(data)
 
@@ -65,12 +65,8 @@ try {
     for (const i of s.items) if (i.image) i.image = await embed(i.image)
   }
 
-  const id = project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'openscrgen'
-  const tpl = {
-    id: `openscrgen-${id}`, name: project.name, description: data.description ?? '', author: author ?? 'Open Screenshot Generator',
-    targets: Object.fromEntries(project.targets.map(({ slides, ...t }) => [t.platform, { ...t, slides: slides.map(({ id: _, ...s }) => s) }])),
-    fonts: project.fonts,
-  }
+  const tpl = asTemplate(project, data.description ?? '', author ?? 'Open Screenshot Generator')
+  const id = tpl.id.replace(/^openscrgen-/, '')
   mkdirSync(out, { recursive: true })
   writeFileSync(`${out}/${id}.json`, JSON.stringify(tpl, null, 2) + '\n')
   writeFileSync(`${out}/${id}.ssproj`, JSON.stringify({ format: 'screenshot-studio', version: 1, project }))
