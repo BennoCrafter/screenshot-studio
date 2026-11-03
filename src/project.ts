@@ -274,11 +274,11 @@ export async function projectToFile(p: Project): Promise<Blob> {
   return new Blob([JSON.stringify({ format: 'screenshot-studio', version: 1, project: rest })], { type: 'application/json' })
 }
 
-/** Reads a project file into a project (same id, so opening a file again replaces its copy here). */
+/** Reads a project file, keeping its id and save time; ImportDialog decides whether it replaces the copy here. */
 export async function projectFromFile(text: string): Promise<Project> {
   const data = JSON.parse(text)
   if (data?.format !== 'screenshot-studio') throw new Error('Not a Screenshot Studio project file')
   const p = await mapImages(data.project as WithImages<string | null>, orEmpty(async (u) =>
     u ? loadImage(await (await fetch(u)).blob()) : null))
-  return withFonts({ ...p, updated: Date.now() })
+  return withFonts(p)
 }

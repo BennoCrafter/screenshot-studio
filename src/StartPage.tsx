@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { ask, openTextFile, tell } from './native'
-import { deleteProject, listProjects, PROJECT_FILE, projectFromFile, saveProject, type Project, type ProjectSummary } from './project'
+import { ask, openTextFile } from './native'
+import { deleteProject, listProjects, PROJECT_FILE, type Project, type ProjectSummary } from './project'
 import { PLATFORMS, type Platform } from './render'
 import { TemplateCard, useCustomTemplates } from './TemplateGallery'
 import { ALL_PLATFORMS, BUILT_IN, toTarget, type Template } from './templates'
@@ -11,7 +11,7 @@ const when = (t: number) =>
   new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(t)
 
 /** Welcome window (new project, recent projects) and the new-project template chooser. */
-export function StartPage({ onOpen, onCreate }: { onOpen: (id: string) => void; onCreate: (p: Project) => void }) {
+export function StartPage({ onOpen, onCreate, onImport }: { onOpen: (id: string) => void; onCreate: (p: Project) => void; onImport: (text: string) => void }) {
   const chooser = useRef<HTMLDialogElement>(null)
   const [recent, setRecent] = useState<ProjectSummary[] | null>(null)
   useEffect(() => {
@@ -32,14 +32,7 @@ export function StartPage({ onOpen, onCreate }: { onOpen: (id: string) => void; 
           className="start-action"
           onClick={async () => {
             const text = await openTextFile(PROJECT_FILE)
-            if (text === null) return
-            try {
-              const p = await projectFromFile(text)
-              await saveProject(p)
-              onCreate(p)
-            } catch {
-              await tell('That file isn\'t a Screenshot Studio project.')
-            }
+            if (text !== null) onImport(text)
           }}
         >
           <strong>Open Project File…</strong>

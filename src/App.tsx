@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { serveAgent } from './agent'
 import { Editor } from './Editor'
+import { ImportDialog, type Import } from './ImportDialog'
 import { animate } from './motion'
 import { isDesktop, tell } from './native'
-import { openProject, projectFromFile, saveProject, thumbnail, type Project } from './project'
+import { listProjects, openProject, projectFromFile, saveProject, thumbnail, type Project } from './project'
 import { Settings } from './Settings'
 import { StartPage } from './StartPage'
 
@@ -12,6 +13,7 @@ const save = (p: Project) =>
 
 export default function App() {
   const [project, setProject] = useState<Project | null>(null)
+  const [importing, setImporting] = useState<Import | null>(null)
   const latest = useRef(project)
   useEffect(() => {
     latest.current = project
@@ -51,21 +53,22 @@ export default function App() {
     return () => void off.then((f) => f())
   }, [])
 
+  const importFile = async (text: string) => {
+    try {
+      const file = await projectFromFile(text)
+      const existing = (await listProjects()).find((x) => x.id === file.id)
+      setImporting((i) => ({ file, existing, n: (i?.n ?? 0) + 1 }))
+    } catch {
+      await tell('That file isn\'t a Screenshot Studio project.')
+    }
+  }
+
   // .ssproj files opened from Finder / Explorer (double-click, Open With)
   useEffect(() => {
     if (!isDesktop) return
     const take = async () => {
       const { invoke } = await import('@tauri-apps/api/core')
-      for (const text of await invoke<string[]>('take_opened_files')) {
-        try {
-          const p = await projectFromFile(text)
-          await saveProject(p)
-          if (latest.current) await save(latest.current)
-          show(p)
-        } catch {
-          await tell('That file isn\'t a Screenshot Studio project.')
-        }
-      }
+      for (const text of await invoke<string[]>('take_opened_files')) await importFile(text)
     }
     take()
     const off = import('@tauri-apps/api/event').then(({ listen }) => listen('files-opened', take))
@@ -75,7 +78,7 @@ export default function App() {
   return <>
     <Settings project={project} setProject={(fn) => setProject((p) => p && fn(p))} />
     {!project ? (
-    <StartPage onOpen={(id) => openProject(id).then(show)} onCreate={show} />
+    <StartPage onOpen={(id) => openProject(id).then(show)} onCreate={show} onImport={importFile} />
   ) : (
     <Editor
       key={project.id}
@@ -87,5 +90,14 @@ export default function App() {
       }}
     />
   )}
+    <ImportDialog
+      importing={importing}
+      onOpen={async (p) => {
+        // the open project first, so replacing that same project isn't undone by its save
+        if (latest.current) await save(latest.current)
+        await saveProject(p)
+        show(p)
+      }}
+    />
   </>
 }
