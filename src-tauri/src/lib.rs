@@ -247,6 +247,17 @@ async fn claude_mcp_added() -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
+/// Removes this app's MCP server from the terminal Claude Code: undoes the `claude mcp add` Settings shows.
+#[tauri::command]
+async fn claude_mcp_remove() -> Result<(), String> {
+    let o = cli("claude")
+        .args(["mcp", "remove", "screenshot-studio"])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|_| NOT_INSTALLED.to_string())?;
+    if o.status.success() { Ok(()) } else { Err(String::from_utf8_lossy(&o.stderr).trim().into()) }
+}
+
 /// Opens a web link in the default browser; only https links, so the page can't launch anything else.
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
@@ -318,7 +329,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![mcp_respond, agent_chat, agent_models, agent_stop, claude_mcp_added, open_url, gh, mcp_chat_token, mcp_allow_others, take_opened_files])
+        .invoke_handler(tauri::generate_handler![mcp_respond, agent_chat, agent_models, agent_stop, claude_mcp_added, claude_mcp_remove, open_url, gh, mcp_chat_token, mcp_allow_others, take_opened_files])
         .setup(|app| {
             let menu = Menu::default(app.handle())?;
             if let Some(MenuItemKind::Submenu(first)) = menu.items()?.into_iter().next() {

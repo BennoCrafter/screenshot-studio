@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { MCP_URL } from './agent'
-import { isDesktop, openLink } from './native'
+import { isDesktop, openLink, tell } from './native'
 import { effortName, MODES, modelOf, useModels, useStored } from './prefs'
 import type { Project } from './project'
 import { PLATFORMS, SIZES, type SizeName } from './render'
@@ -62,6 +62,10 @@ export function Settings({ project, setProject }: { project: Project | null; set
   const dialog = useRef<HTMLDialogElement>(null)
   const [appearance, setAppearance] = useState(stored)
   const [linked, setLinked] = useState<boolean | null>(null)
+  const disconnect = async () => {
+    await (await import('@tauri-apps/api/core')).invoke('claude_mcp_remove').catch((e) => tell(`Couldn't disconnect: ${e}`))
+    claudeLinked().then(setLinked)
+  }
   const [others, setOthers] = useState(storedOthers)
   const allowOthers = (on: boolean) => {
     setOthers(on)
@@ -184,6 +188,7 @@ export function Settings({ project, setProject }: { project: Project | null; set
             {client === 'Claude Code' && (
               <p className={`status ${linked ? 'ok' : ''}`}>
                 {linked === null ? 'Checking…' : linked ? '● Connected: terminal sessions can use Screenshot Studio.' : '○ Not connected yet.'}
+                {linked && <button className="link" onClick={disconnect}>Disconnect</button>}
               </p>
             )}
             {!(client === 'Claude Code' && linked) && (
