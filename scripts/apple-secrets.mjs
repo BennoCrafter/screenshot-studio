@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline/promises'
 
 const p12 = process.argv[2]
 if (!p12) throw new Error('Usage: node scripts/apple-secrets.mjs path/to/cert.p12')
+if (!process.stdin.isTTY) throw new Error('This asks for passwords: run it in a real terminal, not through a pipe or `!`.')
 
 // secret values go through stdin, never the command line, so they stay out of `ps` and shell history
 const set = (name, value) => execFileSync('gh', ['secret', 'set', name], { input: value, stdio: ['pipe', 'inherit', 'inherit'] })
