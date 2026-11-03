@@ -17,7 +17,11 @@ function Preview({ data, count }: { data: TargetData; count: number }) {
     let live = true
     Promise.all([toTarget({ ...data, slides: data.slides.slice(0, count) }), getFillers()]).then(([t, f]) => {
       const pool = data.platform === 'mac' ? f.mac : f.phone
-      if (live) setSlides(t.slides.map((s, i) => ({ ...s, image: s.image ?? pool[i % pool.length], outerImage: s.outerImage ?? pool[i % pool.length] })))
+      const fill = (n: number) => pool[n % pool.length]
+      if (live) setSlides(t.slides.map((s, i) => ({
+        ...s, image: s.image ?? fill(i), outerImage: s.outerImage ?? fill(i),
+        items: s.items?.map((it) => (it.kind === 'device' ? { ...it, image: it.image ?? fill(i + 1), outerImage: it.outerImage ?? fill(i + 1) } : it)),
+      })))
     })
     return () => { live = false }
   }, [data, count])

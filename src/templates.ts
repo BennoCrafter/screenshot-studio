@@ -43,18 +43,29 @@ export function poseFor(platform: Platform, p: Partial<DevicePose> = {}): Device
   }
 }
 
+/** Decoration from builtin/templates.json: x, y are fractions of the slide; w, h, size and a device's size, of its short side. */
+type Extra = Partial<Omit<Item, 'id' | 'image' | 'outerImage' | 'device'>> & {
+  kind: Item['kind']
+  pose?: Partial<DevicePose> // devices
+  front?: boolean // over the words and device instead of behind them
+}
+
 interface Spec {
   style: Style
   title: string
   subtitle: string
   below?: boolean // words under the device instead of over it
+  hero?: boolean // words only, larger, in the middle: no device
+  label?: string // a small tag in a chip over the headline
+  accent?: string // the chip's color, the theme's text color if unset
+  extras?: Extra[]
   pose?: Partial<DevicePose> // y nudges the device from where the words leave room for it
 }
 
 let measure: CanvasRenderingContext2D | undefined
 
 /** A built-in slide: a headline and subtitle stacked at the top (or bottom), the device filling the rest. */
-function slide(platform: Platform, sizeName: SizeName, { style, title, subtitle, below, pose }: Spec): SlideData {
+function slide(platform: Platform, sizeName: SizeName, { style, title, subtitle, below, hero, label, accent, extras = [], pose }: Spec): SlideData {
   const [w, h] = SIZES[sizeName]
   const unit = Math.min(w, h * 0.8) // portrait sizes by width; landscape (Mac) is held back by height
   const pad = h * 0.06, gap = unit * 0.025
@@ -63,18 +74,37 @@ function slide(platform: Platform, sizeName: SizeName, { style, title, subtitle,
     ctx.font = `${weight} ${px}px ${FONT}`
     return wrap(ctx, text, w * 0.84).length * px * 1.15
   }
-  const tH = block(title, unit * 0.085, 800), sH = block(subtitle, unit * 0.042, 500)
-  const top = below ? h - pad - tH - gap - sH : pad
+  const tPx = unit * (hero ? 0.12 : 0.085), lPx = unit * 0.032
+  const chipH = label ? lPx * 2.2 : 0, chipGap = label ? gap * 1.6 : 0
+  const tH = block(title, tPx, 800), sH = block(subtitle, unit * 0.042, 500)
+  const words = chipH + chipGap + tH + gap + sH
+  const top = hero ? h * 0.46 - words / 2 : below ? h - pad - words : pad
   const text = (t: string, px: number, weight: number, y: number, tall: number) =>
     ({ id: crypto.randomUUID(), kind: 'text' as const, text: t, x: 0.5, y: (y + tall / 2) / h, w: 0.84, h: 0, size: px / w, weight })
-  const head = text(title, unit * 0.085, 800, top, tH)
-  const sub = { ...text(subtitle, unit * 0.042, 500, top + tH + gap, sH), opacity: 0.85 }
+  const head = text(title, tPx, 800, top + chipH + chipGap, tH)
+  const sub = { ...text(subtitle, unit * 0.042, 500, top + chipH + chipGap + tH + gap, sH), opacity: 0.85 }
+  const chip = []
+  if (label) {
+    const tag = label.toUpperCase()
+    ctx.font = `700 ${lPx}px ${FONT}`
+    const cw = ctx.measureText(tag).width + lPx * 2.4
+    chip.push({ id: crypto.randomUUID(), kind: 'rect' as const, x: 0.5, y: (top + chipH / 2) / h, w: cw / w, h: chipH / w, color: accent ?? style.textColor },
+      { ...text(tag, lPx, 700, top + (chipH - lPx * 1.15) / 2, lPx * 1.15), w: cw / w, color: style.bg1 })
+  }
+  const k = unit / w // short-side fractions to width fractions
+  const extra = ({ pose: p, front: _, ...e }: Extra) => ({
+    x: 0.5, y: 0.5, ...e, id: crypto.randomUUID(), w: (e.w ?? 0) * k, h: (e.h ?? 0) * k,
+    ...(e.size != null && { size: e.size * k }), ...(p && { device: poseFor(platform, { ...p, size: (p.size ?? 0.6) * k }) }),
+  })
+  const back = extras.filter((e) => !e.front).map(extra), front = extras.filter((e) => e.front).map(extra)
   const device = poseFor(platform, pose)
   const m = DEVICE_BY_ID[device.model]
   // a laptop's shape depends so much on its lid that it's measured as drawn
   const tall = m.laptop ? renderDevice(device, null, null, device.size * w).height : (m.height / m.width) * device.size * w
-  const devTop = below ? top - pad * 0.8 - tall : top + tH + gap + sH + pad * 0.8
-  return { ...style, device: { ...device, y: device.y + (devTop + tall / 2) / h - 0.5 }, items: [head, sub], layers: [head.id, sub.id, 'device'] }
+  const devTop = below ? top - pad * 0.8 - tall : top + words + pad * 0.8
+  const items = [...back, ...chip, head, sub, ...front]
+  const layers: string[] = [...[...back, ...chip, head, sub].map((i) => i.id), ...(hero ? [] : ['device']), ...front.map((i) => i.id)]
+  return { ...style, device: { ...device, y: device.y + (devTop + tall / 2) / h - 0.5 }, items, layers }
 }
 
 /** One design, laid out for each platform it supports. */

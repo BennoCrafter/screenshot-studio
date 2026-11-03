@@ -10,5 +10,8 @@
   "Peach": { "bg1": "#ffedd5", "bg2": "#fecdd3", "angle": 135, "textColor": "#7c2d12" },
   "Neon": { "bg1": "#0f172a", "bg2": "#db2777", "angle": 135, "textColor": "#ffffff" },
   "Sky": { "bg1": "#e0f2fe", "bg2": "#bae6fd", "angle": 180, "textColor": "#0c4a6e" },
-  "Sand": { "bg1": "#fef3c7", "bg2": "#fde68a", "angle": 200, "textColor": "#451a03" }
+  "Sand": { "bg1": "#fef3c7", "bg2": "#fde68a", "angle": 200, "textColor": "#451a03" },
+  "Lime": { "bg1": "#ecf7df", "bg2": "#d4ecb6", "angle": 180, "textColor": "#2e4813" },
+  "Butter": { "bg1": "#fad55c", "bg2": "#efb728", "angle": 165, "textColor": "#2b2417" },
+  "Blush": { "bg1": "#e3ebea", "bg2": "#f1d6cb", "angle": 180, "textColor": "#4b4433" }
 }
