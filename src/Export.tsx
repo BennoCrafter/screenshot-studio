@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { ask, isDesktop, saveFile, saveFiles } from './native'
+import { isDesktop, saveFile, saveFiles } from './native'
 import { languageName, languagesOf, PROJECT_FILE, projectToFile, type Project } from './project'
 import { labelOf } from './elements'
-import { localize, PLATFORMS, renderSlide, SIZES } from './render'
-import { openLink } from './Settings'
+import { localize, PLATFORMS, renderSlide, sizeOf } from './render'
 import { useStored } from './prefs'
 import { loadCustom, saveCustom, shareTemplate, toData, type Template } from './templates'
 
-const THUMB_W = 132
+const THUMB_H = 180 // every platform's thumbnails the same height
 
 /** How exported PNGs are sorted into subfolders. */
 const FOLDERS = { none: 'All in one folder', 'lang-device': 'Language › Device', 'device-lang': 'Device › Language' }
@@ -19,13 +18,14 @@ export function Export({ project }: { project: Project }) {
   const [open, setOpen] = useState(false)
   const [thumbs, setThumbs] = useState<Record<string, string>>({}) // slide id → small preview
   const [kind, setKind] = useStored<'png' | 'template' | 'file'>('export-kind', 'png')
-  const [skip, setSkip] = useState(new Set<string>()) // slide ids and language codes left out
+  const [skip, setSkip] = useState(new Set<string>()) // slide ids, language codes and (templates) platforms left out
   const [busy, setBusy] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [withShots, setWithShots] = useStored<'on' | 'off'>('export-shots', 'on')
+  const [author, setAuthor] = useStored<string>('template-author', '')
+  const [withShots, setWithShots] = useStored<'on' | 'off'>('template-shots', 'off')
   const shots = withShots === 'on'
-  const [share, setShare] = useState(false) // opt in, and confirmed again before anything leaves the machine
+  const [share, setShare] = useState(false) // opt in; even then the user submits it on GitHub themselves
   const [done, setDone] = useState<string | null>(null)
   const [folders, pickFolders] = useStored<Folders>('export-folders', 'none')
   const [progress, setProgress] = useState<{ n: number; of: number; what: string } | null>(null) // PNG export under way
@@ -35,6 +35,7 @@ export function Export({ project }: { project: Project }) {
   const chosen = project.targets.map((t) => ({ t, slides: t.slides.filter((s) => !skip.has(s.id)) }))
   const slideCount = chosen.reduce((n, c) => n + c.slides.length, 0)
   const count = slideCount * picked.length
+  const tplTargets = project.targets.filter((t) => !skip.has(t.platform))
   /** Leaves out `keys` if all are in, else puts them all in. */
   const toggle = (...keys: string[]) => setSkip((s) => {
     const next = new Set(s)
@@ -50,8 +51,8 @@ export function Export({ project }: { project: Project }) {
     const urls: string[] = []
     ;(async () => {
       for (const t of project.targets) for (const s of t.slides) {
-        const [w, h] = SIZES[t.size]
-        const url = URL.createObjectURL(await renderSlide(localize(s, langs[0]), [w, h], (THUMB_W * 2) / w))
+        const [w, h] = sizeOf(t)
+        const url = URL.createObjectURL(await renderSlide(localize(s, langs[0]), [w, h], (THUMB_H * 2) / h))
         if (!live) return URL.revokeObjectURL(url)
         urls.push(url)
         setThumbs((all) => ({ ...all, [s.id]: url }))
@@ -69,7 +70,7 @@ export function Export({ project }: { project: Project }) {
     try {
       const files = []
       for (const { t, slides } of chosen) {
-        const [w, h] = SIZES[t.size]
+        const [w, h] = sizeOf(t)
         for (const l of picked) for (const s of slides) {
           const n = t.slides.indexOf(s) + 1
           setProgress({ n: files.length, of: count, what: `${PLATFORMS[t.platform].label} · ${languageName(l)} · slide ${n}` })
@@ -89,26 +90,22 @@ export function Export({ project }: { project: Project }) {
   const saveTemplate = async () => {
     setBusy(true)
     setDone(null)
-    const t: Template = {
-      id: crypto.randomUUID(),
-      name: name.trim(),
-      description: description.trim() || 'Saved from a project.',
-      targets: Object.fromEntries(await Promise.all(project.targets.map(async (t) =>
-        [t.platform, { platform: t.platform, size: t.size, slides: await Promise.all(t.slides.map((s) => toData(s, shots))) }]))),
-    }
-    await saveCustom([...(await loadCustom()), { ...t, custom: true }])
-    if (!share) setDone('Saved to your templates.')
-    else if (!(await ask(`Share "${t.name}" publicly?\n\nThis forks Screenshot Studio on GitHub with your account if needed and opens a public pull request with the template${shots ? ', screenshots included' : ''}. Nothing is sent if you cancel.`))) {
-      setDone('Saved to your templates. Not shared.')
-    } else {
-      setDone('Saved. Opening a pull request…')
-      try {
-        setDone(await shareTemplate(t))
-      } catch (e) {
-        setDone(`Saved to your templates, but sharing failed: ${e}`)
+    try {
+      const t: Template = {
+        id: crypto.randomUUID(),
+        name: name.trim(),
+        author: author.trim() || undefined,
+        description: description.trim() || 'Saved from a project.',
+        targets: Object.fromEntries(await Promise.all(tplTargets.map(async (t) =>
+          [t.platform, { platform: t.platform, size: t.size, landscape: t.landscape, slides: await Promise.all(t.slides.map((s) => toData(s, shots))) }]))),
       }
+      await saveCustom([...(await loadCustom()), { ...t, custom: true }])
+      setDone(share ? `Saved to your templates. ${await shareTemplate(t)}` : 'Saved to your templates.')
+    } catch (e) {
+      setDone(`Saved to your templates, but sharing failed: ${e}`)
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
   }
 
   return (
@@ -117,18 +114,19 @@ export function Export({ project }: { project: Project }) {
       <dialog ref={dialog} className="tpl-dialog export" onClose={() => setOpen(false)} onClick={(e) => e.target === dialog.current && dialog.current!.close()}>
         <header>
           <h2>Export</h2>
+          <nav className="platform-tabs">
+            <span className={kind === 'png' ? 'on' : ''}><button onClick={() => setKind('png')}>PNG images</button></span>
+            <span className={kind === 'template' ? 'on' : ''}><button onClick={() => setKind('template')}>Template</button></span>
+            <span className={kind === 'file' ? 'on' : ''}><button onClick={() => setKind('file')}>Project file</button></span>
+          </nav>
           <button onClick={() => dialog.current!.close()}>Close</button>
         </header>
-        <nav className="platform-tabs">
-          <span className={kind === 'png' ? 'on' : ''}><button onClick={() => setKind('png')}>PNG images</button></span>
-          <span className={kind === 'template' ? 'on' : ''}><button onClick={() => setKind('template')}>Template</button></span>
-          <span className={kind === 'file' ? 'on' : ''}><button onClick={() => setKind('file')}>Project file</button></span>
-        </nav>
 
         {kind === 'png' ? (
           <>
+            <div className="ex-body">
             {chosen.map(({ t, slides }) => {
-              const [w, h] = SIZES[t.size]
+              const [w, h] = sizeOf(t)
               const ids = t.slides.map((s) => s.id)
               return (
                 <section key={t.platform} className="ex-platform">
@@ -142,7 +140,7 @@ export function Export({ project }: { project: Project }) {
                       <button
                         key={s.id}
                         className={skip.has(s.id) ? 'ex-slide off' : 'ex-slide'}
-                        style={{ width: w > h ? THUMB_W * 1.6 : THUMB_W, aspectRatio: `${w} / ${h}` }}
+                        style={{ height: THUMB_H, aspectRatio: `${w} / ${h}` }}
                         aria-pressed={!skip.has(s.id)}
                         title={labelOf(s) || `Slide ${i + 1}`}
                         onClick={() => toggle(s.id)}
@@ -179,6 +177,7 @@ export function Export({ project }: { project: Project }) {
                 </p>
               </section>
             )}
+            </div>
             <footer className="ex-foot">
               {progress ? (
                 <span className="ex-progress">
@@ -198,36 +197,47 @@ export function Export({ project }: { project: Project }) {
           </>
         ) : kind === 'file' ? (
           <>
-            <p className="hint">Saves the whole project, screenshots included, to a .ssproj file you can open again or send to someone.</p>
-            <div className="row end">
-              <button className="primary" onClick={async () => saveFile(`${project.name}.ssproj`, await projectToFile(project), PROJECT_FILE)}>Save File…</button>
+            <div className="ex-body">
+              <p className="hint">Saves the whole project, screenshots included, as a .ssproj file you can open again or send to someone.</p>
             </div>
+            <footer className="ex-foot">
+              <span />
+              <button className="primary" onClick={async () => saveFile(`${project.name}.ssproj`, await projectToFile(project), PROJECT_FILE)}>Save File…</button>
+            </footer>
           </>
         ) : (
           <>
-            <p className="hint">Saves the whole project, every platform, as a template to start new projects from.</p>
-            <label>Name<input value={name} onChange={(e) => setName(e.target.value)} /></label>
-            <label>Description<input value={description} placeholder="What it looks like, who it's for" onChange={(e) => setDescription(e.target.value)} /></label>
-            <label><input type="checkbox" checked={shots} onChange={(e) => setWithShots(e.target.checked ? 'on' : 'off')} />Include screenshots and images</label>
-            <p className="hint">Turn this off to remove every screenshot and image from the template. The text, colors, devices and layout stay.</p>
-            {isDesktop && (
-              <>
-                <label><input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />Share with everyone</label>
-                <p className="hint">Opens a pull request on GitHub adding it to Screenshot Studio's templates, using your GitHub CLI login (<code>gh auth login</code>). Everything in it becomes public{shots ? ', screenshots included' : ''}.</p>
-              </>
-            )}
-            {done && (
-              <p className="status ok">
-                {done.startsWith('https://')
-                  ? <>Pull request opened: <a href={done} onClick={(e) => { e.preventDefault(); openLink(done) }}>{done}</a></>
-                  : done}
-              </p>
-            )}
-            <div className="row end">
-              <button className="primary" disabled={busy || !name.trim()} onClick={saveTemplate}>
+            <div className="ex-body ex-form">
+              <p className="hint">A template to start new projects from.</p>
+              <div className="ex-pair">
+                <label>Name<input value={name} onChange={(e) => setName(e.target.value)} /></label>
+                <label>Made by<input value={author} placeholder="Your name" onChange={(e) => setAuthor(e.target.value)} /></label>
+              </div>
+              <label>Description<textarea rows={4} value={description} placeholder="What it looks like, who it's for" onChange={(e) => setDescription(e.target.value)} /></label>
+              <div className="ex-field">
+                <span>Devices</span>
+                <div className="ex-chips">
+                  {project.targets.map(({ platform: p }) => (
+                    <button key={p} className={skip.has(p) ? 'chip' : 'chip on'} aria-pressed={!skip.has(p)} onClick={() => toggle(p)}>{PLATFORMS[p].label}</button>
+                  ))}
+                </div>
+              </div>
+              <label className="ex-switch">
+                <span>Include screenshots and images<small>Otherwise only the text, colors, devices and layout are kept.</small></span>
+                <input type="checkbox" className="switch" checked={shots} onChange={(e) => setWithShots(e.target.checked ? 'on' : 'off')} />
+              </label>
+              <label className="ex-switch">
+                <span>Share with everyone<small>Opens GitHub in your browser with the template filled in. Nothing is sent until you submit it there{shots ? ', and screenshots become public' : ''}.</small></span>
+                <input type="checkbox" className="switch" checked={share} onChange={(e) => setShare(e.target.checked)} />
+              </label>
+              {done && <p className="status ok">{done}</p>}
+            </div>
+            <footer className="ex-foot">
+              <span />
+              <button className="primary" disabled={busy || !name.trim() || !tplTargets.length} onClick={saveTemplate}>
                 {busy ? 'Saving…' : share ? 'Save and share…' : 'Save template'}
               </button>
-            </div>
+            </footer>
           </>
         )}
       </dialog>

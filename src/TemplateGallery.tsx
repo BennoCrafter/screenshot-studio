@@ -23,7 +23,7 @@ export function TemplateCard({ t, platform, selected, onPick, onDelete }: {
       </button>
       <div className="tpl-meta">
         <strong>{t.name}</strong>
-        <small>{(Object.keys(t.targets) as Platform[]).map((p) => PLATFORMS[p].label).join(' · ')}</small>
+        <small>{(Object.keys(t.targets) as Platform[]).map((p) => PLATFORMS[p].label).join(' · ')}{t.author && ` · by ${t.author}`}</small>
       </div>
       {onDelete && <button className="tpl-delete" onClick={onDelete} title="Delete template">×</button>}
     </div>

@@ -3,6 +3,12 @@
 
 export const isDesktop = '__TAURI_INTERNALS__' in window
 
+/** Opens a link in the browser (the desktop webview would otherwise navigate itself away). */
+export const openLink = async (url: string) => {
+  if (!isDesktop) return void window.open(url, '_blank', 'noopener')
+  await (await import('@tauri-apps/api/core')).invoke('open_url', { url })
+}
+
 export type Filter = { name: string; extensions: string[] }
 
 /** The files each picker offers (and drops accept). */

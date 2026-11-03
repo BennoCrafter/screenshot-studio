@@ -25,6 +25,7 @@ export interface Template {
   id: string
   name: string
   description: string
+  author?: string // who made it, shown on its card
   targets: Partial<Record<Platform, TargetData>>
   custom?: boolean
 }
@@ -208,39 +209,32 @@ const list = async <T,>(file: string): Promise<T[]> => {
 export const loadCustom = async () => (await list<Template>('templates.json')).filter((t) => t.targets) // drop the older single-platform format
 export const saveCustom = (all: Template[]) => write('templates.json', all)
 
-// ---- sharing: a pull request adding a template to the repo's templates/ -------------
+// ---- sharing: a file for the repo's templates/ (themes/), proposed through GitHub's web editor ----
 
 const REPO = 'BennoCrafter/screenshot-studio'
+const MAX_URL = 8000 // shortcut: a guess at what GitHub accepts; bigger files go through the upload page instead
 
-/** Opens a pull request that adds `t` to everyone's templates, through the user's GitHub CLI login. Returns its URL. */
-export async function shareTemplate(t: Template) {
-  const { invoke } = await import('@tauri-apps/api/core')
-  const gh = (args: string[], input?: string) => invoke<string>('gh', { args, input })
-  const me = await gh(['api', 'user', '--jq', '.login'])
-  // others work in their fork (made if needed, brought up to date); the owner branches here
-  const repo = me === REPO.split('/')[0] ? REPO : `${me}/screenshot-studio`
-  if (repo !== REPO) {
-    await gh(['repo', 'fork', REPO, '--clone=false'])
-    await gh(['repo', 'sync', repo]).catch(() => {}) // already up to date
+/** Proposes `t` for everyone's templates: opens GitHub in the browser with the file filled in. Returns what to tell the user. */
+export const shareTemplate = (t: Template) =>
+  share('template', t.name, (id) => ({ id, name: t.name, author: t.author, description: t.description, targets: t.targets }))
+
+/** The same for a theme, for everyone's built-in themes. */
+export const shareTheme = ({ name, bg1, bg2, angle, textColor }: Theme) =>
+  share('theme', name, () => ({ name, bg1, bg2, angle, textColor }))
+
+// Nothing leaves the machine from here: the user reviews and submits on GitHub, which forks and opens the pull request.
+async function share(kind: 'template' | 'theme', name: string, json: (id: string) => object) {
+  const id = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || kind}-${crypto.randomUUID().slice(0, 6)}`
+  const file = JSON.stringify(json(id), null, 2) + '\n'
+  const url = `https://github.com/${REPO}/new/main?filename=${encodeURIComponent(`${kind}s/${id}.json`)}&value=${encodeURIComponent(file)}`
+  if (url.length <= MAX_URL) {
+    await openLink(url)
+    return `Opened GitHub with the ${kind} filled in. Click “Commit changes” there to propose it.`
   }
-  const sha = await gh(['api', `repos/${REPO}/git/ref/heads/main`, '--jq', '.object.sha'])
-  const id = `${t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'template'}-${crypto.randomUUID().slice(0, 6)}`
-  const branch = `template/${id}`
-  for (let n = 0; ; n++) { // a fork just made takes a few seconds to be ready
-    try {
-      await gh(['api', `repos/${repo}/git/refs`, '-f', `ref=refs/heads/${branch}`, '-f', `sha=${sha}`])
-      break
-    } catch (e) {
-      if (n === 5) throw e
-      await new Promise((r) => setTimeout(r, 3000))
-    }
-  }
-  const file = JSON.stringify({ id, name: t.name, description: t.description, targets: t.targets }, null, 2) + '\n'
-  const content = (await toDataUrl(new Blob([file]))).split(',')[1]
-  await gh(['api', '-X', 'PUT', `repos/${repo}/contents/templates/${id}.json`, '--input', '-'],
-    JSON.stringify({ message: `Add template: ${t.name}`, content, branch }))
-  return gh(['pr', 'create', '-R', REPO, '--head', repo === REPO ? branch : `${me}:${branch}`, '--base', 'main',
-    '--title', `Add template: ${t.name}`, '--body', `${t.description}\n\nShared from Screenshot Studio.`])
+  // too long for a link: save the file, then open the upload page to drop it in
+  if (!(await saveFile(`${id}.json`, new Blob([file], { type: 'application/json' }), { name: 'JSON', extensions: ['json'] }))) return 'Not shared.'
+  await openLink(`https://github.com/${REPO}/upload/main/${kind}s`)
+  return `The ${kind} is too big for a link, so it was saved as ${id}.json. Drop that file on the GitHub page that just opened, then click “Commit changes”.`
 }
 
 // ---- themes: the built-in ones plus the user's own ----------------------------------

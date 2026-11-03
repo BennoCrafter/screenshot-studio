@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { MCP_URL } from './agent'
-import { isDesktop } from './native'
+import { isDesktop, openLink } from './native'
 import { effortName, MODES, modelOf, useModels, useStored } from './prefs'
 import type { Project } from './project'
 import { PLATFORMS, SIZES, type SizeName } from './render'
@@ -37,11 +37,6 @@ export async function claudeLinked() {
 const GITHUB = 'https://github.com/BennoCrafter/screenshot-studio'
 const WEBSITE = 'https://bennowo.de/apps/screenshot-studio'
 
-/** Opens a link in the browser (the desktop webview would otherwise navigate itself away). */
-export const openLink = async (url: string) => {
-  if (!isDesktop) return void window.open(url, '_blank', 'noopener')
-  await (await import('@tauri-apps/api/core')).invoke('open_url', { url })
-}
 
 /** Whether other MCP clients (terminal agents, editors) may use the app's MCP server (the app's own chat always can). */
 export const storedOthers = () => {

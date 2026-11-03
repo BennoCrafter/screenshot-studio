@@ -710,13 +710,29 @@ input[type='checkbox'].switch:checked { background: #34c759; }
 input[type='checkbox'].switch:checked::after { translate: 14px 0; transform: none; }
 
 /* export dialog */
-.export[open] { display: flex; flex-direction: column; gap: 10px; }
-.export .platform-tabs { align-self: flex-start; }
+.export { height: min(640px, calc(100vh - 48px)); } /* one size for every tab */
+.tpl-dialog { overflow-x: hidden; }
+.export[open] { display: flex; flex-direction: column; gap: 14px; }
+.export > header { gap: 12px; }
+.export > header .platform-tabs { margin-right: auto; }
+.export > header .platform-tabs button { min-width: 96px; }
+.ex-body { flex: 1; min-height: 0; overflow: hidden auto; display: flex; flex-direction: column; gap: 10px; margin: 0 -4px; padding: 0 4px; }
+.ex-body .hint { margin: 0; overflow-wrap: anywhere; }
+.ex-form { gap: 16px; }
+.ex-form label, .ex-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 500; }
+.ex-form textarea { min-height: 96px; font: inherit; font-size: 13px; }
+.ex-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ex-switch.ex-switch { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); cursor: pointer; }
+.ex-switch > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; color: var(--text); }
+.ex-switch small { color: var(--muted); font-weight: 400; line-height: 1.4; }
+.ex-switch .switch { flex-shrink: 0; }
+.ex-form .status { margin: 0; padding: 10px 12px; border-radius: 10px; font-size: 12px; background: color-mix(in srgb, #34c759 12%, transparent); overflow-wrap: anywhere; }
+@media (max-width: 560px) { .ex-pair { grid-template-columns: 1fr; } .export > header { flex-wrap: wrap; } }
 .ex-platform { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
 .ex-platform header { display: flex; align-items: baseline; gap: 8px; }
 .ex-platform header span { color: var(--muted); font-size: 12px; }
 .ex-platform header .link { margin-left: auto; font-size: 12px; }
-.ex-slides { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 6px; }
+.ex-slides { display: flex; flex-wrap: wrap; gap: 10px; padding: 2px; }
 .ex-slide { position: relative; flex-shrink: 0; padding: 0; overflow: hidden; border: 2px solid var(--accent); border-radius: 10px; background: var(--panel); }
 .ex-slide img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .ex-slide i, .ex-slide b { position: absolute; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font: 600 11px/1 system-ui, sans-serif; }
@@ -728,7 +744,7 @@ input[type='checkbox'].switch:checked::after { translate: 14px 0; transform: non
 .ex-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { padding: 4px 12px; border-radius: 999px; font-size: 12px; color: var(--muted); }
 .chip.on { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: var(--accent); color: var(--text); }
-.ex-foot { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.ex-foot { display: flex; align-items: center; gap: 12px; padding-top: 14px; border-top: 1px solid var(--border); }
 .ex-foot span { display: flex; flex-direction: column; margin-right: auto; font-weight: 600; }
 .ex-foot .ex-progress { flex: 1; gap: 6px; }
 .ex-progress > span { display: flex; flex-direction: row !important; justify-content: space-between; gap: 12px; }
@@ -738,8 +754,6 @@ input[type='checkbox'].switch:checked::after { translate: 14px 0; transform: non
 .ex-progress progress::-moz-progress-bar { background: var(--accent); }
 .ex-foot small { font-weight: 400; color: var(--muted); font-size: 12px; }
 .export h3 { margin: 10px 0 0; }
-.export .row.end { justify-content: flex-end; margin: 8px 0 0; }
-.export .status a { color: var(--accent); word-break: break-all; }
 .inspector h2.inspector-slide { margin-top: 10px; padding-top: 16px; border-top: 1px solid var(--border); }
 .vec2 { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .vec2 > span { flex: 0 0 auto; margin-right: 4px; }
