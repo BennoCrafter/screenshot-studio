@@ -41,8 +41,9 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
   editing: Part | null
   /** Picks `part` (Shift adds or removes it); returns how to move everything picked, or null if it was let go. */
   onPress: (part: Part, additive: boolean) => ((dx: number, dy: number) => void) | null
-  /** Starts resizing `part`; returns how to set its size as a multiple of the size it has now. */
-  onGrab: (part: Part) => (ratio: number) => void
+  /** Starts resizing `parts`, each in place or, given `about` (slide fractions), spread from that point too;
+   * returns how to set their size as a multiple of the size they have now. */
+  onGrab: (parts: Part[], about?: { x: number; y: number }) => (ratio: number) => void
   onMenu: (part: Part, x: number, y: number) => void
   onEdit: (part: Part | null) => void
   onEditText: (part: Part, text: string) => void
@@ -54,7 +55,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
   onShot: (part: Part, patch: Partial<Shot>) => void
 }) {
   const ref = useRef<HTMLCanvasElement>(null)
-  const drag = useRef<{ grip: Grip; x: number; y: number; start: DevicePose; mover?: (dx: number, dy: number) => void; resizer?: (ratio: number) => void; part?: Part; deg?: number; snap?: { box: Rect; x: number[]; y: number[] }; parts?: Part[]
+  const drag = useRef<{ grip: Grip; x: number; y: number; start: DevicePose; mover?: (dx: number, dy: number) => void; resizer?: (ratio: number) => void; c?: { x: number; y: number }; part?: Part; deg?: number; snap?: { box: Rect; x: number[]; y: number[] }; parts?: Part[]
     ghost?: { el: HTMLCanvasElement; x: number; y: number } } | null>(null)
   const [anchor, setAnchor] = useState<{ anchors: Record<Part, Anchor>; px: number }>()
   const [live, setLive] = useState<Grip | null>(null)
@@ -82,6 +83,15 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
   const model = DEVICE_BY_ID[pose.model]
   const onDevice = (patch: Partial<DevicePose>) => onShot(devPart!, { device: { ...pose, ...patch } })
 
+  /** The box around `parts` on this slide, in slide px. */
+  const bounds = (parts: Part[]): Rect | null => {
+    const at = parts.map((p) => anchor?.anchors[p]).filter((a) => !!a)
+    if (!at.length) return null
+    const x = Math.min(...at.map((a) => a.x)), y = Math.min(...at.map((a) => a.y))
+    return { x, y, w: Math.max(...at.map((a) => a.x + a.w)) - x, h: Math.max(...at.map((a) => a.y + a.h)) - y }
+  }
+  const group = selected.length > 1 ? bounds(selected) : null
+
   const begin = (e: React.PointerEvent, d: NonNullable<typeof drag.current>) => {
     e.currentTarget.setPointerCapture(e.pointerId)
     drag.current = d
@@ -95,12 +105,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
     if (!mover) return
     // what's being dragged on this slide, and the lines it can click onto
     const parts = selected.includes(part) ? selected : e.shiftKey ? [...selected, part] : [part]
-    const at = parts.map((p) => anchor?.anchors[p]).filter((a) => !!a)
-    const box = at.length ? {
-      x: Math.min(...at.map((a) => a.x)), y: Math.min(...at.map((a) => a.y)),
-      w: Math.max(...at.map((a) => a.x + a.w)) - Math.min(...at.map((a) => a.x)),
-      h: Math.max(...at.map((a) => a.y + a.h)) - Math.min(...at.map((a) => a.y)),
-    } : null
+    const box = bounds(parts)
     const others = layersOf(slide).filter((p) => !parts.includes(p)).map((p) => anchor?.anchors[p]).filter((a) => !!a)
     const snap = box ? {
       box,
@@ -113,7 +118,17 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
     if (e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
-    begin(e, { grip, x: e.clientX, y: e.clientY, start: pose, part, deg: part ? anchor?.anchors[part]?.rotation : undefined, resizer: part === undefined || grip === 'rotate' ? undefined : onGrab(part) })
+    begin(e, { grip, x: e.clientX, y: e.clientY, start: pose, part, deg: part ? anchor?.anchors[part]?.rotation : undefined, })
+  }
+  // a lone element grows from its centre; a group from the centre of the box around it, spreading apart
+  const resize = (parts: Part[]) => (e: React.PointerEvent) => {
+    const b = bounds(parts)
+    if (e.button !== 0 || !b) return
+    e.preventDefault()
+    e.stopPropagation()
+    const c = { x: b.x + b.w / 2, y: b.y + b.h / 2 }
+    const about = parts.length > 1 ? { x: c.x / size[0], y: c.y / size[1] } : undefined
+    begin(e, { grip: 'resize', x: e.clientX, y: e.clientY, start: pose, c, resizer: onGrab(parts, about) })
   }
   const menu = (part: Part) => (e: React.MouseEvent) => {
     e.preventDefault()
@@ -151,8 +166,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
       ghost(d, e, r)
     }
     else if (d.grip === 'resize') {
-      const t = anchor.anchors[d.part!]
-      if (t) d.resizer!(ratio(t.x + t.w / 2, t.y + t.h / 2))
+      d.resizer!(ratio(d.c!.x, d.c!.y))
     }
     else if (d.grip === 'scale') onDevice({ size: clamp(Math.round(d.start.size * ratio(c.cx, c.cy) * 100) / 100, 0.1, 2) })
     else if (d.grip === 'spin') onDevice({ roll: wrap180(snap((d.start.roll ?? 0) - swept(c.cx, c.cy), e.shiftKey)) })
@@ -258,7 +272,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
             {...handlers}
           >
             {solo === p && !at.dev && CORNERS.map((c) => (
-              <span key={c} className={`corner ${c}`} title="Drag to resize" onPointerDown={start('resize', p)} {...handlers} />
+              <span key={c} className={`corner ${c}`} title="Drag to resize" onPointerDown={resize([p])} {...handlers} />
             ))}
             {solo === p && !at.dev && (
               <span
@@ -272,6 +286,13 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
           </div>
         )
       })}
+      {group && (
+        <div className="device-box" style={box(group)}>
+          {CORNERS.map((c) => (
+            <span key={c} className={`corner ${c}`} title="Drag to resize the group" onPointerDown={resize(selected)} {...handlers} />
+          ))}
+        </div>
+      )}
       {dev && (
         <>
           <div className="device-box" style={box(dev)}>

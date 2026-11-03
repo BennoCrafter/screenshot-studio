@@ -137,8 +137,13 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       return s0 ? next.filter((x) => x.slide === s.id).reduce((s, x) => ({ ...s, ...moved(s0, s, x.part, dx, dy) }), s) : s
     }))
   }
-  const grab = (s0: Slide, part: Part) => (ratio: number) =>
-    setSlides((all) => all.map((s) => (s.id === s0.id ? { ...s, ...resized(s0, s, part, ratio) } : s)))
+  const grab = (s0: Slide, parts: Part[], about?: { x: number; y: number }) => (ratio: number) =>
+    setSlides((all) => all.map((s) => (s.id !== s0.id ? s : parts.reduce((s, p) => {
+      const r = { ...s, ...resized(s0, s, p, ratio) }
+      if (!about) return r
+      const at = positionOf(s0, p, [1, 1])
+      return { ...r, ...moved(s0, r, p, (at.x - about.x) * (ratio - 1), (at.y - about.y) * (ratio - 1)) }
+    }, s))))
 
   /** Applies `fn` to every picked element that's on its slide. */
   const eachPicked = (fn: (s: Slide, part: Part) => Partial<Slide>) =>
@@ -413,7 +418,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
               selected={selection.filter((x) => x.slide === s.id).map((x) => x.part)}
               editing={editing?.slide === s.id ? editing.part : null}
               onPress={(part, additive) => press(s, part, additive)}
-              onGrab={(part) => grab(s, part)}
+              onGrab={(parts, about) => grab(s, parts, about)}
               onMenu={(_, x, y) => setMenu({ x, y })}
               onEdit={(part) => setEditing(part ? { slide: s.id, part } : null)}
               onEditText={(part, text) => setText(s, part, text)}
