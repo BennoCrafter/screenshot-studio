@@ -84,6 +84,9 @@ async function saveAttachments(files: Attachment[]) {
   }))
 }
 
+/** 950, 12.3k, 1.2M */
+const tokens = (n: number) => n < 1000 ? String(n) : n < 1e6 ? `${(n / 1000).toFixed(1)}k` : `${(n / 1e6).toFixed(1)}M`
+
 export function Chat({ hidden }: { hidden: boolean }) {
   const [items, setItems] = useState<Item[]>([])
   const [input, setInput] = useState('')
@@ -98,6 +101,7 @@ export function Chat({ hidden }: { hidden: boolean }) {
   const efforts = picked?.supportedEffortLevels ?? [] // none: the model doesn't take an effort
   const [asks, setAsks] = useState<Approval[]>([])
   const [picker, setPicker] = useState<{ x: number; y: number; view: 'models' | 'more' | 'effort' } | null>(null) // the model menu, above its button
+  const [usage, setUsage] = useState({ input: 0, cached: 0, output: 0, cost: 0 }) // this conversation's, summed over its runs
   const session = useRef<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
   const add = (it: Item) => setItems((all) => [...all, it])
@@ -149,6 +153,12 @@ export function Chat({ hidden }: { hidden: boolean }) {
             setItems((all) => all.map((it) => (it.id === c.tool_use_id ? { ...it, result, failed: !!c.is_error } : it)))
           }
         }
+        if (ev.type === 'result' && ev.usage) setUsage((u) => ({
+          input: u.input + (ev.usage.input_tokens ?? 0) + (ev.usage.cache_creation_input_tokens ?? 0),
+          cached: u.cached + (ev.usage.cache_read_input_tokens ?? 0),
+          output: u.output + (ev.usage.output_tokens ?? 0),
+          cost: u.cost + (ev.total_cost_usd ?? 0),
+        }))
         if (ev.type === 'result' && ev.is_error) add({ role: 'error', text: ev.result ?? ev.subtype })
       }),
     )
@@ -225,7 +235,12 @@ export function Chat({ hidden }: { hidden: boolean }) {
         }[mcp]}>
           <i />{{ off: 'Other MCP clients off', checking: 'Checking…', linked: 'Connected to Claude Code', open: 'Connect other MCP clients' }[mcp]}
         </button>
-        <button onClick={() => { session.current = null; setItems([]) }} disabled={busy || !items.length} title="Start a new conversation">New chat</button>
+        {!!(usage.input + usage.output) && (
+          <span className="chat-usage" title={`Input ${usage.input.toLocaleString()} · cached input ${usage.cached.toLocaleString()} · output ${usage.output.toLocaleString()}${usage.cost ? ` · about $${usage.cost.toFixed(2)}` : ''}`}>
+            {tokens(usage.input + usage.cached + usage.output)} tokens
+          </span>
+        )}
+        <button onClick={() => { session.current = null; setItems([]); setUsage({ input: 0, cached: 0, output: 0, cost: 0 }) }} disabled={busy || !items.length} title="Start a new conversation">New chat</button>
       </header>
 
       <div className="chat-list" ref={list}>
