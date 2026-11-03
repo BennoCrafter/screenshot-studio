@@ -48,7 +48,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBCMDk2NzkyQTY1MEU1QzUKUldURjVWQ21rbWNKQzFZQ0t2ZTVPMlNVU3NpWXBBSTB4QWxiMERDakdvYlRmMEQ2T1hPQWg1anMK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhBMzgzNUY1M0RGQjkxNDgKUldSSWtmczk5VFU0aWt0d2J1S1BYSDJlYWxTVmxFYnNMZWh2UUt2VlpicXJuMC90QjA1Wkp1angK",
       "endpoints": ["https://github.com/BennoCrafter/screenshot-studio/releases/latest/download/latest.json"]
     }
   }
