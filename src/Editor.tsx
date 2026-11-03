@@ -294,10 +294,10 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     setSlides((all) => all.toSpliced(from, 1).toSpliced(to, 0, all[from]))
   }
 
-  // Dragging a slide carries a thumbnail of it, and the others make room as it passes over them.
-  const dragStart = (e: React.DragEvent, i: number) => {
+  // Dragging a slide on the board carries a thumbnail of it (the sidebar's row is its own), and the others make room as it passes over them.
+  const dragStart = (e: React.DragEvent, i: number, thumb = false) => {
     e.dataTransfer.effectAllowed = 'move'
-    const src = document.querySelector<HTMLCanvasElement>(`canvas[data-slide="${slides[i].id}"]`)
+    const src = thumb && document.querySelector<HTMLCanvasElement>(`canvas[data-slide="${slides[i].id}"]`)
     if (src) {
       const k = document.createElement('canvas')
       k.width = 120
@@ -305,7 +305,10 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       k.getContext('2d')!.drawImage(src, 0, 0, k.width, k.height)
       k.style.cssText = 'position:fixed;left:-9999px;border-radius:8px'
       document.body.append(k)
-      e.dataTransfer.setDragImage(k, k.width / 2, k.height / 2)
+      // held where the pointer is on the slide (the handle sits under it: the thumbnail's bottom edge), not by its middle
+      const r = src.getBoundingClientRect()
+      const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
+      e.dataTransfer.setDragImage(k, clamp01((e.clientX - r.left) / r.width) * k.width, clamp01((e.clientY - r.top) / r.height) * k.height)
       setTimeout(() => k.remove())
     }
     setDragged(i)
@@ -445,7 +448,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
             />
             {s.id === sel?.id && (
               <div className="slide-bar" onPointerDown={(e) => e.stopPropagation()}>
-                <span className="handle" draggable title="Drag to move this slide" onDragStart={(e) => dragStart(e, i)} onDragEnd={() => setDragged(null)}>
+                <span className="handle" draggable title="Drag to move this slide" onDragStart={(e) => dragStart(e, i, true)} onDragEnd={() => setDragged(null)}>
                   ⠿ Slide {i + 1} of {slides.length}
                 </span>
                 <button title="Duplicate slide" onClick={() => duplicateSlide(s)}>Duplicate</button>
