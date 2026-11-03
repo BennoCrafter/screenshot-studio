@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { APPROVE_TOOL, MCP_URL, onApproval, type Approval } from './agent'
+import { MCP_URL } from './agent'
+import { APPROVE_TOOL, onApproval, type Approval } from './tools'
 import { extOfType } from './project'
 import { openSettings } from './Settings'
 
