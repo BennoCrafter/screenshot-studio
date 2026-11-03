@@ -4,7 +4,7 @@
 import { DEVICE_BY_ID, restFold } from './devices/models'
 import { renderDevice, type DevicePose } from './devices/render3d'
 import { isDesktop, openLink, saveFile } from './native'
-import { imageUrl, loadImage } from './project'
+import { imageUrl, loadImage, type ProjectFont } from './project'
 import builtinTemplates from './builtin/templates.json'
 import { FONT, PLATFORMS, SIZES, sizeOf, THEMES, wrap, type Item, type Platform, type SizeName, type Slide, type Style, type Target } from './render'
 
@@ -27,6 +27,7 @@ export interface Template {
   description: string
   author?: string // who made it, shown on its card
   targets: Partial<Record<Platform, TargetData>>
+  fonts?: ProjectFont[] // fonts its texts use, given to projects made from it
   custom?: boolean
 }
 

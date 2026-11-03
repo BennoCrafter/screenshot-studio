@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ask, openTextFile } from './native'
-import { deleteProject, listProjects, PROJECT_FILE, type Project, type ProjectSummary } from './project'
+import { deleteProject, listProjects, PROJECT_FILE, withFonts, type Project, type ProjectSummary } from './project'
 import { PLATFORMS, type Platform } from './render'
 import { TemplateCard, useCustomTemplates } from './TemplateGallery'
 import { ALL_PLATFORMS, BUILT_IN, toTarget, type Template } from './templates'
@@ -36,7 +36,7 @@ export function StartPage({ onOpen, onCreate, onImport }: { onOpen: (id: string)
           }}
         >
           <strong>Open Project File…</strong>
-          <small>A .ssproj file saved from Screenshot Studio</small>
+          <small>A .ssproj file, or an Open Screenshot Generator project</small>
         </button>
       </section>
 
@@ -91,12 +91,13 @@ function Chooser({ onCancel, onCreate }: { onCancel: () => void; onCreate: (p: P
     setChosen(defaults(t, tb))
   }
   const create = async () =>
-    onCreate({
+    onCreate(await withFonts({
       id: crypto.randomUUID(),
       name: name.trim() || 'Untitled',
       updated: Date.now(),
       targets: await Promise.all(chosen.map((p) => toTarget(picked.targets[p]!))),
-    })
+      fonts: picked.fonts,
+    }))
 
   return (
     <>

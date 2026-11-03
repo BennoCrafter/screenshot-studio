@@ -2,7 +2,7 @@
 // files stay small and a shape can be redrawn sharp at any size.
 
 /** A path in a vw × vh box, filled, or stroked `stroke` wide (in box units) with round ends. */
-export interface Shape { label: string; group: 'Shapes' | 'Badges' | 'Icons'; vw: number; vh: number; d: string; stroke?: number; color?: string }
+export interface Shape { label: string; group: 'Shapes' | 'Badges' | 'Icons'; vw: number; vh: number; x0?: number; y0?: number; d: string; stroke?: number; color?: string; evenodd?: boolean }
 
 const n = (v: number) => +v.toFixed(2)
 
@@ -64,10 +64,10 @@ export const SHAPES: Record<string, Shape> = {
 }
 
 /** Draws `shape` filling the box (x, y, w, h); strokes keep their width however the box is stretched. */
-export function drawShape(ctx: CanvasRenderingContext2D, shape: Shape, x: number, y: number, w: number, h: number, color: string) {
+export function drawShape(ctx: CanvasRenderingContext2D, shape: Pick<Shape, 'd' | 'vw' | 'vh' | 'x0' | 'y0' | 'stroke' | 'evenodd'>, x: number, y: number, w: number, h: number, color: string) {
   const sx = w / shape.vw, sy = h / shape.vh
   const path = new Path2D()
-  path.addPath(new Path2D(shape.d), new DOMMatrix([sx, 0, 0, sy, x, y]))
+  path.addPath(new Path2D(shape.d), new DOMMatrix([sx, 0, 0, sy, x - (shape.x0 ?? 0) * sx, y - (shape.y0 ?? 0) * sy]))
   if (shape.stroke) {
     ctx.strokeStyle = color
     ctx.lineWidth = shape.stroke * Math.min(sx, sy)
@@ -75,6 +75,6 @@ export function drawShape(ctx: CanvasRenderingContext2D, shape: Shape, x: number
     ctx.stroke(path)
   } else {
     ctx.fillStyle = color
-    ctx.fill(path)
+    ctx.fill(path, shape.evenodd ? 'evenodd' : 'nonzero')
   }
 }

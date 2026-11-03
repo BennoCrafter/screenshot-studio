@@ -3,6 +3,7 @@
 // on macOS); the browser keeps them in IndexedDB with their screenshots as Blobs.
 
 import { isDesktop, typeOfName } from './native'
+import { fromOpenScrGen, isOpenScrGen } from './openscrgen'
 import { FONT, type Item, type Platform, type Slide, type Target, type Translation } from './render'
 
 export interface Project {
@@ -33,7 +34,7 @@ async function loadFont({ name, data }: ProjectFont) {
   faces.set(name, { face, data })
 }
 /** A project's fonts loaded before it's shown; one that won't load leaves its texts in the system font. */
-const withFonts = async (p: Project) => {
+export const withFonts = async (p: Project) => {
   await Promise.all((p.fonts ?? []).map((f) => loadFont(f).catch(() => {})))
   return p
 }
@@ -64,7 +65,7 @@ export function languageName(code: string) {
 export type ProjectSummary = Pick<Project, 'id' | 'name' | 'updated' | 'thumb'> & { platforms: Platform[] }
 
 /** A project with its screenshots held as `I` (Blobs in IndexedDB, file names on disk, data URLs in a file). */
-type WithImages<I> = Omit<Project, 'targets'> & {
+export type WithImages<I> =Omit<Project, 'targets'> & {
   targets: (Omit<Target, 'slides'> & { slides: (Omit<Slide, 'image' | 'outerImage' | 'items' | 'translations'> & {
     image: I
     outerImage: I
@@ -250,7 +251,7 @@ export function thumbnail(canvas: HTMLCanvasElement | null) {
 
 // ---- project files: one JSON file, screenshots inlined as data URLs ----------------
 
-export const PROJECT_FILE = { name: 'Screenshot Studio project', extensions: ['ssproj'] }
+export const PROJECT_FILE = { name: 'Screenshot Studio project', extensions: ['ssproj', 'json'] } // json: Open Screenshot Generator projects (openscrgen.ts)
 
 export const toDataUrl = (blob: Blob) =>
   new Promise<string>((resolve, reject) => {
@@ -277,8 +278,9 @@ export async function projectToFile(p: Project): Promise<Blob> {
 /** Reads a project file, keeping its id and save time; ImportDialog decides whether it replaces the copy here. */
 export async function projectFromFile(text: string): Promise<Project> {
   const data = JSON.parse(text)
-  if (data?.format !== 'screenshot-studio') throw new Error('Not a Screenshot Studio project file')
-  const p = await mapImages(data.project as WithImages<string | null>, orEmpty(async (u) =>
+  const project = data?.format === 'screenshot-studio' ? data.project : isOpenScrGen(data) ? await fromOpenScrGen(data) : null
+  if (!project) throw new Error('Not a Screenshot Studio project file')
+  const p = await mapImages(project as WithImages<string | null>, orEmpty(async (u) =>
     u ? loadImage(await (await fetch(u)).blob()) : null))
   return withFonts(p)
 }

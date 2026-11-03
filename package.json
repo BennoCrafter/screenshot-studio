@@ -12,7 +12,8 @@
     "desktop": "tauri dev",
     "desktop:build": "tauri build",
     "bump": "node scripts/bump.mjs",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "openscrgen": "node scripts/openscrgen.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

@@ -1,5 +1,5 @@
 import { renderDevice, type DevicePose } from './devices/render3d'
-import { drawShape, SHAPES } from './shapes'
+import { drawShape, SHAPES, type Shape } from './shapes'
 import builtinThemes from './builtin/themes.json'
 
 // One draw function for both preview and export, so what you see is exactly what you get.
@@ -34,6 +34,7 @@ export interface Item {
   id: string
   kind: 'text' | 'rect' | 'ellipse' | 'shape' | 'image' | 'device'
   shape?: string // shapes: a name in SHAPES (shapes.ts)
+  svg?: Pick<Shape, 'd' | 'vw' | 'vh' | 'x0' | 'y0' | 'stroke' | 'evenodd'> // shapes: a path of their own instead, from an imported file
   x: number
   y: number
   w: number // text wraps at this width
@@ -218,7 +219,7 @@ export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h:
       ctx.textBaseline = 'top'
       t.lines.forEach((line, n) => ctx.fillText(line, t.cx, at.y + n * t.size * 1.15))
     } else if (item?.kind === 'shape') {
-      const shape = SHAPES[item.shape ?? '']
+      const shape = item.svg ?? SHAPES[item.shape ?? '']
       if (shape) drawShape(ctx, shape, at.x, at.y, at.w, at.h, item.color ?? s.textColor)
     } else if (item?.kind === 'image') {
       if (item.image) ctx.drawImage(item.image, at.x, at.y, at.w, at.h)
