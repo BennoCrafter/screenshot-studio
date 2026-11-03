@@ -32,7 +32,8 @@ export type Part = string
 /** An added object. Positions are its centre, as fractions of slide width and height; sizes are fractions of slide width. */
 export interface Item {
   id: string
-  kind: 'text' | 'rect' | 'ellipse' | 'image' | 'device'
+  kind: 'text' | 'rect' | 'ellipse' | 'shape' | 'image' | 'device'
+  shape?: string // shapes: a name in SHAPES (shapes.ts)
   x: number
   y: number
   w: number // text wraps at this width
@@ -42,7 +43,7 @@ export interface Item {
   weight?: number // text: font weight, 600 if unset
   opacity?: number // text: 1 if unset
   text?: string
-  color?: string // text (the slide's text color if unset) and shapes
+  color?: string // text (the slide's text color if unset), rects, ellipses and shapes
   rotation?: number // degrees clockwise (not devices: they spin with their pose)
   image?: HTMLImageElement | null // images, and devices' screenshots
   outerImage?: HTMLImageElement | null // devices: a foldable's outer display
@@ -209,6 +210,9 @@ export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h:
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
       t.lines.forEach((line, n) => ctx.fillText(line, t.cx, at.y + n * t.size * 1.15))
+    } else if (item?.kind === 'shape') {
+      const shape = SHAPES[item.shape ?? '']
+      if (shape) drawShape(ctx, shape, at.x, at.y, at.w, at.h, item.color ?? s.textColor)
     } else if (item?.kind === 'image') {
       if (item.image) ctx.drawImage(item.image, at.x, at.y, at.w, at.h)
     } else if (item) {

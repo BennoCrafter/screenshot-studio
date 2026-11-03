@@ -3,6 +3,7 @@
 import type { DevicePose } from './devices/render3d'
 import { layersOf, PLATFORMS, type Item, type Part, type Slide } from './render'
 import type { Project } from './project'
+import { SHAPES } from './shapes'
 
 export const itemOf = (s: Slide, p: Part) => s.items?.find((i) => i.id === p)
 export const isText = (s: Slide, p: Part) => itemOf(s, p)?.kind === 'text'
@@ -57,6 +58,7 @@ export function partName(s: Slide, p: Part) {
   if (p === 'device') return 'Device'
   const i = itemOf(s, p)
   if (i?.kind === 'text') return i.text?.trim().split('\n')[0].slice(0, 24) || 'Text'
+  if (i?.kind === 'shape') return SHAPES[i.shape ?? '']?.label ?? 'Shape'
   return { rect: 'Rectangle', ellipse: 'Ellipse', image: 'Image', text: 'Text', device: 'Device' }[i?.kind ?? 'text']
 }
 
@@ -121,10 +123,14 @@ export function restack(s: Slide, part: Part, i: (now: number) => number): Parti
 }
 
 /** A new object of `kind`, in the middle of the slide; a device takes `pose`. */
-export function newItem(kind: Item['kind'], image?: HTMLImageElement, pose?: DevicePose): Item {
+export function newItem(kind: Item['kind'], image?: HTMLImageElement, pose?: DevicePose, shape?: string): Item {
   const base = { id: crypto.randomUUID(), kind, x: 0.5, y: 0.5 }
   if (kind === 'device' && pose) return { ...base, w: 0, h: 0, device: pose, image: null, outerImage: null }
   if (kind === 'text') return { ...base, w: 0.7, h: 0, size: 0.05, text: 'Text' }
   if (kind === 'image' && image) return { ...base, w: 0.4, h: (0.4 * image.naturalHeight) / image.naturalWidth, image }
+  if (kind === 'shape') {
+    const s = SHAPES[shape!], w = s.group === 'Icons' ? 0.15 : s.group === 'Badges' ? 0.5 : 0.3
+    return { ...base, shape, w, h: (w * s.vh) / s.vw, color: s.color ?? '#ffffff' }
+  }
   return { ...base, w: 0.3, h: 0.3, color: '#ffffff' }
 }

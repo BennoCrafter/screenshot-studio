@@ -603,7 +603,7 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
       )}
       {part && isDevice(sel, part) && <DeviceInspector sel={sel} device={part} lang={lang} edit={edit} idField={idField} />}
       {item?.kind === 'text' && <TextInspector item={item} sel={sel} lang={lang} fonts={fonts} addFont={addFont} fontForAll={fontForAll} set={setItem} setText={(t) => setText(item.id, t)} />}
-      {(item?.kind === 'rect' || item?.kind === 'ellipse') && (
+      {(item?.kind === 'rect' || item?.kind === 'ellipse' || item?.kind === 'shape') && (
         <label>Color{differ(likes.map(({ s, p }) => itemOf(s, p)?.color ?? s.textColor)) && <Mixed />}<input type="color" value={item.color ?? sel.textColor} onChange={(e) => setItem({ color: e.target.value })} /></label>
       )}
       {item?.kind === 'image' && (
@@ -645,7 +645,7 @@ function useDiffers() {
 const Mixed = () => <small className="mixed"> · Mixed</small>
 
 /** 'texts', 'devices', … for a heading over several picked elements. */
-const kindName = (s: Slide, p: Part) => ({ text: 'texts', rect: 'rectangles', ellipse: 'ellipses', image: 'images', device: 'devices' })[kindOf(s, p) ?? 'text']
+const kindName = (s: Slide, p: Part) => ({ text: 'texts', rect: 'rectangles', ellipse: 'ellipses', shape: 'shapes', image: 'images', device: 'devices' })[kindOf(s, p) ?? 'text']
 
 /** A number with its axis letter in front, like Godot, Blender or Unity: type it, or drag the letter sideways to scrub (Shift for fine steps). */
 function ScrubNumber({ axis, value, onChange }: { axis: 'x' | 'y'; value: number; onChange: (v: number) => void }) {

@@ -3,8 +3,9 @@
 import { DEVICES, DEVICE_BY_ID } from './devices/models'
 import { deleteProject, fontFamily, fontFrom, LANGUAGES, languagesOf, listProjects, loadImage, type Project } from './project'
 import { typeOfName } from './native'
-import { FONTS, layersOf, localize, PLATFORMS, renderSlide, SIZES, THEMES, type Item, type Style, type Platform, type Slide, type Target } from './render'
+import { FONTS, layersOf, localize, PLATFORMS, renderSlide, SIZES, sizeOf, THEMES, type Item, type Style, type Platform, type Slide, type Target } from './render'
 import { labelOf, replaceShots, shotIdOf } from './elements'
+import { SHAPES } from './shapes'
 import type { DevicePose } from './devices/render3d'
 import { ALL_PLATFORMS, BLANK, BUILT_IN, loadCustom, loadThemes, poseFor, saveTheme, toTarget } from './templates'
 import type { Host } from './agent'
@@ -110,7 +111,10 @@ async function slideFrom(platform: Platform, s: Json, was: Slide | undefined): P
   }
   const item = async (i: Json) => {
     const prev = was?.items?.find((w) => w.id === i.id)
+    const shape = i.kind === 'shape' ? SHAPES[i.shape as string] : undefined
+    if (i.kind === 'shape' && !shape) throw new Error(`Unknown shape ${i.shape}; use one of ${Object.keys(SHAPES).join(', ')}`)
     return {
+      ...(shape ? { h: ((i.w as number) * shape.vh) / shape.vw, color: shape.color } : {}),
       ...(i as unknown as Item),
       id: typeof i.id === 'string' ? i.id : crypto.randomUUID(),
       image: i.kind === 'image' || i.kind === 'device' ? await imageOr(i.image, prev?.image) : undefined,
