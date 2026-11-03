@@ -134,6 +134,7 @@ export function Settings({ project, setProject }: { project: Project | null; set
   const [effort, setEffort] = useStored<string>('chat-effort', '')
   const models = useModels()
   const efforts = modelOf(models, model)?.supportedEffortLevels ?? []
+  const [showIds, setShowIds] = useStored<'on' | 'off'>('shot-ids', 'off')
   const [query, setQuery] = useState('')
 
   const segmented = <T extends string>(value: T, options: readonly T[], set: (v: T) => void) => (
@@ -152,7 +153,9 @@ export function Settings({ project, setProject }: { project: Project | null; set
 
   const sections: Section[] = [
     { id: 'general', label: 'General', icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.8 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.2 14H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z', groups: [
-      { rows: [{ title: 'Appearance', hint: 'Light, dark, or follow the system.', keys: 'theme dark light mode color', ui: segmented(appearance, ['system', 'light', 'dark'] as const, pick) }] },
+      { rows: [{ title: 'Appearance', hint: 'Light, dark, or follow the system.', keys: 'theme dark light mode color', ui: segmented(appearance, ['system', 'light', 'dark'] as const, pick) },
+        { title: 'Screenshot IDs', hint: 'Shows an ID field on devices and images, so automations can replace their screenshots by ID: drop files into the project\'s screenshot folder (set under Project, with a project open) or use the replace_screenshots MCP tool.', keys: 'screenshot id automation replace link ci',
+          ui: <input type="checkbox" className="switch" aria-label="Screenshot IDs" checked={showIds === 'on'} onChange={(e) => setShowIds(e.target.checked ? 'on' : 'off')} /> }] },
     ] },
     ...(project ? [{ id: 'project', label: 'Project', icon: 'M4 5h16v14H4zM4 9h16', groups: [
       { title: `Export size · ${project.name}`, hint: 'The pixel size PNGs are exported at. The App Store asks for one of these per device class; the first is the one it requires.', rows: project.targets.map((t) => ({
@@ -160,6 +163,16 @@ export function Settings({ project, setProject }: { project: Project | null; set
         ui: menu(t.size, Object.fromEntries(PLATFORMS[t.platform].sizes.map((n) => [n, `${n} · ${SIZES[n][0]}×${SIZES[n][1]}`])) as Record<SizeName, string>,
           (size) => setProject((p) => ({ ...p, targets: p.targets.map((x) => (x.platform === t.platform ? { ...x, size } : x)) }))),
       })) },
+      ...(isDesktop && showIds === 'on' ? [{ title: 'Screenshot folder', hint: 'A screenshot named after a screenshot ID (home-screen.png), here or in any folder inside, replaces that element\'s screenshot while the project is open.', rows: [
+        { title: project.shotFolder?.split(/[\\/]/).pop() || 'No folder chosen', hint: project.shotFolder?.replace(/^(\/Users|\/home)\/[^/]+/, '~') ?? 'Pick the folder your automation saves screenshots to.', keys: 'screenshot folder automation watch drop ci', ui: (
+          <span className="actions">
+            {project.shotFolder && <button onClick={() => setProject(({ shotFolder: _f, shotSeen: _s, ...p }) => p)}>Stop</button>}
+            <button onClick={async () => {
+              const dir = await (await import('@tauri-apps/plugin-dialog')).open({ directory: true, title: 'Screenshot folder' })
+              if (dir) setProject((p) => ({ ...p, shotFolder: dir, shotSeen: {} })) // a new folder applies all it holds
+            }}>{project.shotFolder ? 'Change…' : 'Choose…'}</button>
+          </span>
+        ) }] }] : []),
     ] }] : []),
     ...(isDesktop ? [{ id: 'agent', label: 'Agent', icon: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', groups: [
       { title: 'Agent tab', hint: 'The assistant in the sidebar. The same choices sit under its message field.', rows: [

@@ -13,6 +13,8 @@ export interface Project {
   languages?: string[] // App Store locales, first is the primary; missing means ['en']
   thumb?: string // small JPEG data URL of the first slide, for the start page
   fonts?: ProjectFont[] // fonts added to the project, for its texts
+  shotFolder?: string // desktop: a folder automations drop screenshots into, named by screenshot ID (shotFolder.ts)
+  shotSeen?: Record<string, string> // its files already applied: path in the folder → size and dates
 }
 
 /** A font file added to a project; texts use it through fontFamily(name). */

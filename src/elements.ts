@@ -1,7 +1,8 @@
 // What can be done to one element of a slide, whichever kind it is. Each returns a patch for the slide.
 
 import type { DevicePose } from './devices/render3d'
-import { layersOf, type Item, type Part, type Slide } from './render'
+import { layersOf, PLATFORMS, type Item, type Part, type Slide } from './render'
+import type { Project } from './project'
 
 export const itemOf = (s: Slide, p: Part) => s.items?.find((i) => i.id === p)
 export const isText = (s: Slide, p: Part) => itemOf(s, p)?.kind === 'text'
@@ -25,6 +26,26 @@ export function withShot(s: Slide, p: Part, patch: Partial<Shot>, lang?: string)
   if (!lang || !Object.keys(shots).length) return shared
   const t = s.translations?.[lang] ?? {}
   return { ...shared, translations: { ...s.translations, [lang]: { ...t, shots: { ...t.shots, [p]: { ...t.shots?.[p], ...shots } } } } }
+}
+
+/** The screenshot ID of an image or device element, if it has one. */
+export const shotIdOf = (s: Slide, p: Part) => (p === 'device' ? s.shotId : itemOf(s, p)?.shotId)
+export const withShotId = (s: Slide, p: Part, id: string): Partial<Slide> =>
+  p === 'device' ? { shotId: id || undefined } : withItem(s, p, (i) => ({ ...i, shotId: id || undefined }))
+
+/** Every element whose screenshot ID is in `images` gets that screenshot (in `lang`, if given); `done` says where. */
+export function replaceShots(p: Project, images: Map<string, HTMLImageElement>, lang?: string) {
+  const done: string[] = []
+  const targets = p.targets.map((t) => ({
+    ...t,
+    slides: t.slides.map((s, i) => layersOf(s).reduce((s, part) => {
+      const image = images.get(shotIdOf(s, part) ?? '')
+      if (!image) return s
+      done.push(`${shotIdOf(s, part)} → ${PLATFORMS[t.platform].label} slide ${i + 1} (${partName(s, part)})`)
+      return { ...s, ...withShot(s, part, { image }, lang) }
+    }, s)),
+  }))
+  return { project: { ...p, targets }, done }
 }
 
 const withItem = (s: Slide, id: Part, fn: (i: Item) => Item): Partial<Slide> =>

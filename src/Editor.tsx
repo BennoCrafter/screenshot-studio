@@ -8,9 +8,11 @@ import { openSettings } from './Settings'
 import { animate } from './motion'
 import { ask, FONT_FILES, IMAGE_FILES, isDesktop, openFiles, tell } from './native'
 import { fontFamily, fontFrom, LANGUAGES, languageName, languagesOf, loadImage, type Project, type ProjectFont } from './project'
-import { added, isDevice, isText, itemOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotOf, withShot, withText, type Shot } from './elements'
+import { useStored } from './prefs'
+import { added, isDevice, isText, itemOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotIdOf, shotOf, withShot, withShotId, withText, type Shot } from './elements'
 import { FONT, FONTS, layersOf, localize, PLATFORMS, SIZES, type Item, type Part, type Platform, type Slide, type Style, type Target } from './render'
 import { SlideCanvas } from './SlideCanvas'
+import { watchShotFolder } from './shotFolder'
 import { Export } from './Export'
 import { adaptTarget, ALL_PLATFORMS, poseFor } from './templates'
 
@@ -228,6 +230,21 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     copy()
     paste()
   }
+
+  // screenshots dropped into the project's screenshot folder replace the ones with their ID; a note says what changed
+  const [notice, setNotice] = useState('')
+  const live = useRef({ project, setProject })
+  useEffect(() => { live.current = { project, setProject } })
+  useEffect(() => {
+    if (!isDesktop || !project.shotFolder) return
+    let hide: ReturnType<typeof setTimeout>
+    const off = watchShotFolder(() => live.current.project, (fn) => live.current.setProject(fn), (msg) => {
+      setNotice(msg)
+      clearTimeout(hide)
+      hide = setTimeout(() => setNotice(''), 6000)
+    })
+    return () => { off(); clearTimeout(hide) }
+  }, [project.shotFolder])
 
   // Esc clears the selection, so the board is in focus with nothing picked; ⌘Z/⇧⌘Z undo and redo, ⌘C/⌘V/⌘D copy, paste and
   // duplicate, ⌘A picks every element, Delete removes the picked ones
@@ -503,6 +520,11 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
               index={slides.indexOf(sel)}
               size={size}
               update={(patch) => update(sel.id, patch)}
+              shotIdUser={(id, part) => {
+                for (const t of project.targets) for (const [i, s] of t.slides.entries()) for (const p of layersOf(s))
+                  if (shotIdOf(s, p) === id && !(s.id === sel.id && p === part)) return `${PLATFORMS[t.platform].label} slide ${i + 1} (${partName(s, p)})`
+                return null
+              }}
             />
           ) : (
             <>
@@ -513,12 +535,13 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         </div>
         {isDesktop && <Chat hidden={tab !== 'chat'} />}
       </aside>
+      {notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}
     </div>
   )
 }
 
 /** The picked element's settings (the last one, when several are picked), then the slide's own. */
-function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update }: {
+function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update, shotIdUser }: {
   sel: Slide
   fonts: ProjectFont[] // the project's own
   addFont: (file: File) => Promise<ProjectFont>
@@ -529,10 +552,17 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
   index: number
   size: readonly [number, number] // the slide in px
   update: (patch: Partial<Slide>) => void
+  /** Where else in the project a screenshot ID is used, if anywhere: IDs are unique. */
+  shotIdUser: (id: string, part: Part) => string | null
 }) {
   const item = part ? itemOf(sel, part) : undefined
   const at = part ? positionOf(sel, part, size) : null
+  const [showIds] = useStored<'on' | 'off'>('shot-ids', 'off')
   const setItem = (patch: Partial<Item>) => update({ items: sel.items!.map((i) => (i.id === item!.id ? { ...i, ...patch } : i)) })
+  // under the element's screenshot picker
+  const idField = part && showIds === 'on' && (
+    <ShotIdField key={part} id={shotIdOf(sel, part) ?? ''} user={(id) => shotIdUser(id, part)} set={(id) => update(withShotId(sel, part, id))} />
+  )
   return (
     <div className="inspector-body">
       {part && <h2>{partName(sel, part)}</h2>}
@@ -545,13 +575,16 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
           ))}
         </div>
       )}
-      {part && isDevice(sel, part) && <DeviceInspector sel={sel} device={part} lang={lang} update={update} />}
+      {part && isDevice(sel, part) && <DeviceInspector sel={sel} device={part} lang={lang} update={update} idField={idField} />}
       {item?.kind === 'text' && <TextInspector item={item} sel={sel} lang={lang} fonts={fonts} addFont={addFont} fontForAll={fontForAll} set={setItem} setText={(t) => setText(item.id, t)} />}
       {(item?.kind === 'rect' || item?.kind === 'ellipse') && (
         <label>Color<input type="color" value={item.color ?? sel.textColor} onChange={(e) => setItem({ color: e.target.value })} /></label>
       )}
       {item?.kind === 'image' && (
-        <ShotPicker label="Image" image={item.image ?? null} set={(image) => setItem({ image, h: (item.w * image.naturalHeight) / image.naturalWidth })} />
+        <>
+          <ShotPicker label="Image" image={item.image ?? null} set={(image) => setItem({ image, h: (item.w * image.naturalHeight) / image.naturalWidth })} />
+          {idField}
+        </>
       )}
 
       <h2 className={part ? 'inspector-slide' : undefined}>Slide {index + 1}</h2>
@@ -663,7 +696,7 @@ function TextInspector({ item, sel, lang, fonts, addFont, fontForAll, set, setTe
 }
 
 /** A device's screenshots and pose: the slide's own (`device` = 'device') or an added one. */
-function DeviceInspector({ sel, device, lang, update }: { sel: Slide; device: Part; lang?: string; update: (patch: Partial<Slide>) => void }) {
+function DeviceInspector({ sel, device, lang, update, idField }: { sel: Slide; device: Part; lang?: string; update: (patch: Partial<Slide>) => void; idField?: React.ReactNode }) {
   const shot = shotOf(sel, device), pose = shot.device
   const setShot = (patch: Partial<Shot>) => update(withShot(sel, device, patch, lang))
   const own = lang ? sel.translations?.[lang]?.shots?.[device] : undefined // this language's own screenshots
@@ -681,6 +714,7 @@ function DeviceInspector({ sel, device, lang, update }: { sel: Slide; device: Pa
       {model.outer && (
         <ShotPicker label={shotLabel('Outer screenshot (shown when closed)', own?.outerImage)} image={own?.outerImage ?? shot.outerImage} set={(outerImage) => setShot({ outerImage })} />
       )}
+      {idField}
       <label>
         Device
         <select value={model.id} onChange={(e) => setDevice({ model: e.target.value, finish: DEVICE_BY_ID[e.target.value].finishes[0].id })}>
@@ -723,6 +757,24 @@ function DeviceInspector({ sel, device, lang, update }: { sel: Slide; device: Pa
       <label><input type="checkbox" checked={pose.shadow !== false} onChange={(e) => setDevice({ shadow: e.target.checked })} />Shadow</label>
       <label><input type="checkbox" checked={pose.reflections !== false} onChange={(e) => setDevice({ reflections: e.target.checked })} />Reflections</label>
     </>
+  )
+}
+
+/** An element's screenshot ID: a file of that name in the screenshot folder replaces its screenshot. One taken
+ * elsewhere in the project isn't kept, so each ID stays on one element. */
+function ShotIdField({ id, user, set }: { id: string; user: (id: string) => string | null; set: (id: string) => void }) {
+  const [draft, setDraft] = useState(id)
+  const taken = draft ? user(draft) : null
+  return (
+    <label title="A file named after this ID in the project's screenshot folder (Settings › Project) replaces this screenshot">
+      Screenshot ID
+      <input value={draft} placeholder="e.g. home-screen" spellCheck={false} aria-invalid={!!taken} onChange={(e) => {
+        const v = e.target.value.replace(/\s/g, '-')
+        setDraft(v)
+        if (!v || !user(v)) set(v)
+      }} />
+      {taken && <small className="taken">Already used by {taken}</small>}
+    </label>
   )
 }
 

@@ -13,6 +13,7 @@ export interface Slide {
   image: HTMLImageElement | null
   outerImage: HTMLImageElement | null // foldables' outer display
   device: DevicePose
+  shotId?: string // the device's screenshot ID, for automations that replace screenshots (replace_screenshots)
   translations?: Record<string, Translation> // other languages' text; everything else is shared
 }
 
@@ -44,6 +45,7 @@ export interface Item {
   image?: HTMLImageElement | null // images, and devices' screenshots
   outerImage?: HTMLImageElement | null // devices: a foldable's outer display
   device?: DevicePose // devices: placed by x, y; its size is a fraction of slide width
+  shotId?: string // images and devices: screenshot ID, as on Slide
 }
 export const layersOf = (s: Pick<Slide, 'layers'>): Part[] => s.layers ?? ['device']
 

@@ -4,7 +4,7 @@ import { DEVICES, DEVICE_BY_ID } from './devices/models'
 import { deleteProject, fontFamily, fontFrom, LANGUAGES, languagesOf, listProjects, loadImage, type Project } from './project'
 import { typeOfName } from './native'
 import { FONTS, layersOf, localize, PLATFORMS, renderSlide, SIZES, THEMES, type Item, type Style, type Platform, type Slide, type Target } from './render'
-import { labelOf } from './elements'
+import { labelOf, replaceShots, shotIdOf } from './elements'
 import type { DevicePose } from './devices/render3d'
 import { ALL_PLATFORMS, BLANK, BUILT_IN, loadCustom, loadThemes, poseFor, saveTheme, toTarget } from './templates'
 import type { Host } from './agent'
@@ -191,7 +191,7 @@ export const TOOLS: { name: string; description: string; inputSchema: Json; run:
   {
     name: 'update_project',
     description: `Replace the open project's name and targets with the given JSON, in the shape get_state returns. The app updates live and autosaves.
-languages: App Store language codes; the first is the primary. Each target: { platform, size, slides }. Each slide: { id?, bg1, bg2 (hex), angle (gradient degrees), textColor (for texts without their own color), layers? (what's on the slide, back to front: "device" and item ids; leaving one out deletes it; new items go in front), items? (texts and other objects: { id?, kind: "text" | "rect" | "ellipse" | "image" | "device", x, y: centre as fractions of slide width/height, w, h: fractions of slide width (a text wraps at w), size?: text font size as a fraction of slide width (a headline is ~0.085, a subtitle ~0.042), font?: text CSS font family (default the system font; get_state lists the built-in ones under reference.fonts and the project's own under fonts; add_font adds one), weight?: text font weight (default 600; headlines 800, subtitles 500), opacity?: text, 0-1, text?, rotation?: degrees clockwise (not devices), color?, image?, device? (a device pose like the slide's; its size is a fraction of slide width), outerImage? }), device, image?, outerImage? }. Headlines and subtitles are just text items.
+languages: App Store language codes; the first is the primary. Each target: { platform, size, slides }. Each slide: { id?, bg1, bg2 (hex), angle (gradient degrees), textColor (for texts without their own color), layers? (what's on the slide, back to front: "device" and item ids; leaving one out deletes it; new items go in front), items? (texts and other objects: { id?, kind: "text" | "rect" | "ellipse" | "image" | "device", x, y: centre as fractions of slide width/height, w, h: fractions of slide width (a text wraps at w), size?: text font size as a fraction of slide width (a headline is ~0.085, a subtitle ~0.042), font?: text CSS font family (default the system font; get_state lists the built-in ones under reference.fonts and the project's own under fonts; add_font adds one), weight?: text font weight (default 600; headlines 800, subtitles 500), opacity?: text, 0-1, text?, rotation?: degrees clockwise (not devices), color?, image?, device? (a device pose like the slide's; its size is a fraction of slide width), outerImage?, shotId? }), device, image?, outerImage?, shotId? }. shotId (images and devices; the slide's own device on the slide) names a screenshot for replace_screenshots. Headlines and subtitles are just text items.
 device: { model, finish, size (device width / slide width, ~0.3-1.2), yaw, pitch, roll (degrees), fold (degrees; 180 flat, 0 closed; foldables and Mac lid), x, y (offset of its centre from the slide's middle, as fraction of slide width/height), shadow?, reflections? (false turns off the drop shadow / glossy reflections) }. Omitted fields keep their value for an existing slide id, or get defaults.
 Item text is the primary language's; translations: { "<code>": { items?: { <text item id>: text }, shots? } } holds the other languages'. shots: { "device" or a device item's id: { image?, outerImage? } } gives that language its own screenshots (same values as image above; omitted ones keep what's there, and a language without one shows the primary language's). Everything else is shared by all languages.
 image / outerImage: true keeps the current screenshot, false removes it, a string is an absolute path or an http(s) URL of a PNG, JPEG, WebP or SVG to load. Slide order is array order; omit a slide to delete it, omit id to add one.`,
@@ -204,6 +204,34 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
       const p = await fromAgent(current(host), a)
       host.setProject(p)
       return text(describe(p))
+    },
+  },
+  {
+    name: 'replace_screenshots',
+    description: `Replace screenshots by screenshot ID (the shotId the user gave images and devices, on any platform and slide), for automations that re-shoot the app. Every element with a listed ID gets the new screenshot. Returns what was replaced and which IDs matched nothing.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        screenshots: { type: 'object', additionalProperties: { type: 'string' }, description: '{ "<screenshot id>": "<absolute path or http(s) URL of a PNG, JPEG, WebP or SVG>" }' },
+        language: { type: 'string', description: 'Set these as this language\'s own screenshots; defaults to the primary language.' },
+      },
+      required: ['screenshots'],
+    },
+    run: async (host, a) => {
+      const p = current(host)
+      const given = Object.entries((a.screenshots ?? {}) as Record<string, unknown>)
+      if (!given.length || given.some(([, v]) => typeof v !== 'string')) throw new Error('screenshots must map screenshot IDs to file paths or URLs')
+      const langs = languagesOf(p)
+      if (a.language !== undefined && !langs.includes(a.language as string)) throw new Error(`The project's languages are ${langs.join(', ')}`)
+      const lang = a.language === langs[0] ? undefined : (a.language as string | undefined)
+      // only load images that something uses, all before changing anything, so a bad path changes nothing
+      const used = new Set(p.targets.flatMap((t) => t.slides.flatMap((s) => layersOf(s).map((part) => shotIdOf(s, part)))))
+      const images = new Map(await Promise.all(given.filter(([id]) => used.has(id)).map(async ([id, path]) => [id, await imageFrom(path as string)] as const)))
+      const { project, done } = replaceShots(p, images, lang)
+      host.setProject(project)
+      const missing = given.map(([id]) => id).filter((id) => !images.has(id))
+      return text([`Replaced ${done.length} screenshot${done.length === 1 ? '' : 's'}${lang ? ` (${lang})` : ''}:`, ...done,
+        ...(missing.length ? [`No element has these IDs: ${missing.join(', ')}`] : [])].join('\n'))
     },
   },
   {
