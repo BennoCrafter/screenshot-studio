@@ -163,7 +163,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
       setGuides({ x: sx?.at, y: sy?.at })
       d.mover!(mx / size[0], my / size[1])
       highlight(otherSlide(e))
-      ghost(d, e, r)
+      ghost(d, mx, my, r)
     }
     else if (d.grip === 'resize') {
       d.resizer!(ratio(d.c!.x, d.c!.y))
@@ -181,36 +181,39 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
     // a foldable folds toward its hinge sideways; a laptop's lid follows the pointer up and down
     else onDevice({ fold: clamp(snap(d.start.fold - (model?.laptop ? -dy : dx) * k, e.shiftKey), 0, 180) })
   }
-  // Off its own slide an element would be clipped away, so a copy of it follows the pointer instead.
-  const ghost = (d: NonNullable<typeof drag.current>, e: React.PointerEvent, r: DOMRect) => {
-    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
-    if (inside || !anchor || !d.parts) {
+  // Past its own slide's edge an element would be clipped away (and hidden by the next slide), so a copy of it
+  // floats above everything instead, placed from the snapped move (mx, my, slide px) so it stays with the element.
+  const ghost = (d: NonNullable<typeof drag.current>, mx: number, my: number, r: DOMRect) => {
+    const b = d.snap?.box
+    const out = b && (b.x + mx < 0 || b.y + my < 0 || b.x + b.w + mx > size[0] || b.y + b.h + my > size[1])
+    if (!out || !d.parts) {
       if (d.ghost) d.ghost.el.style.display = 'none'
       return
     }
     const k = r.width / size[0] // screen px per slide px
     if (!d.ghost) {
-      const at = d.parts.map((p) => anchor.anchors[p]).filter((a) => !!a)
+      const full = document.createElement('canvas')
+      full.width = size[0]
+      full.height = size[1]
+      // its own anchors, as the slide may already show the element moved
+      const drawn = drawSlide(full.getContext('2d')!, { ...slide, bg1: 'transparent', bg2: 'transparent', layers: layersOf(slide).filter((p) => d.parts!.includes(p)) }, size[0], size[1])
+      const at = d.parts.map((p) => drawn[p]).filter((a) => !!a)
       if (!at.length) return
       const x0 = Math.min(...at.map((a) => a.x)), y0 = Math.min(...at.map((a) => a.y))
       const x1 = Math.max(...at.map((a) => a.x + a.w)), y1 = Math.max(...at.map((a) => a.y + a.h))
       const pad = Math.max(x1 - x0, y1 - y0) * 0.3 // room for rotation and shadows
-      const full = document.createElement('canvas')
-      full.width = size[0]
-      full.height = size[1]
-      drawSlide(full.getContext('2d')!, { ...slide, bg1: 'transparent', bg2: 'transparent', layers: layersOf(slide).filter((p) => d.parts!.includes(p)) }, size[0], size[1])
       const el = document.createElement('canvas')
       el.width = Math.ceil(x1 - x0 + pad * 2)
       el.height = Math.ceil(y1 - y0 + pad * 2)
       el.getContext('2d')!.drawImage(full, pad - x0, pad - y0)
       el.className = 'drag-ghost'
-      el.style.width = `${el.width * k}px`
-      el.style.height = `${el.height * k}px`
       document.body.append(el)
-      // where its top-left sits on screen, and the pointer then
-      d.ghost = { el, x: r.left + (x0 - pad) * k - e.clientX, y: r.top + (y0 - pad) * k - e.clientY }
+      d.ghost = { el, x: pad, y: pad }
     }
-    Object.assign(d.ghost.el.style, { display: '', left: `${e.clientX + d.ghost.x}px`, top: `${e.clientY + d.ghost.y}px` })
+    Object.assign(d.ghost.el.style, {
+      display: '', width: `${d.ghost.el.width * k}px`, height: `${d.ghost.el.height * k}px`,
+      left: `${r.left + (b.x + mx - d.ghost.x) * k}px`, top: `${r.top + (b.y + my - d.ghost.y) * k}px`,
+    })
   }
   const end = (e: React.PointerEvent) => {
     drag.current?.ghost?.el.remove()

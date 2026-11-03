@@ -122,7 +122,7 @@ body { margin: 0; }
   outline: 1.5px dashed var(--accent);
   pointer-events: none;
 }
-.drag-ghost { position: fixed; z-index: 100; pointer-events: none; opacity: 0.9; }
+.drag-ghost { position: fixed; z-index: 100; pointer-events: none; }
 .guide { position: absolute; z-index: 3; background: #ff2d87; pointer-events: none; }
 .guide.v { top: 0; bottom: 0; width: calc(1px / var(--z, 1)); }
 .guide.h { left: 0; right: 0; height: calc(1px / var(--z, 1)); }
