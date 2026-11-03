@@ -35,6 +35,7 @@
     "active": true,
     "targets": ["app", "dmg", "appimage", "deb", "nsis"],
     "createUpdaterArtifacts": true,
+    "macOS": { "signingIdentity": "-" },
     "fileAssociations": [
       { "ext": ["ssproj"], "name": "Screenshot Studio project", "description": "Screenshot Studio project", "role": "Editor", "mimeType": "application/json" }
     ],
