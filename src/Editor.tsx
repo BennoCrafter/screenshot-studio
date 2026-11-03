@@ -501,7 +501,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
             )}
           </div>
         ))}
-        <button className="add-slide" title="Add a slide" aria-label="Add a slide" onClick={addSlide}>
+        <button className="add-slide" title="Add a slide" aria-label="Add a slide" style={{ aspectRatio: `${size[0]} / ${size[1]}` }} onClick={addSlide}>
           <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M12 5v14M5 12h14" /></svg>
         </button>
       </Board>

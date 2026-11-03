@@ -107,7 +107,8 @@ body { margin: 0; }
 .slide:active { cursor: grabbing; }
 .hint { margin: -6px 0 0; color: var(--muted); font-size: 12px; }
 .slide-wrap { position: relative; flex-shrink: 0; }
-.add-slide { align-self: center; flex-shrink: 0; width: 112px; height: 112px; padding: 0; border-radius: 50%; border: 3px dashed var(--border); background: none; color: var(--muted); }
+/* a dashed outline of the slide it would add, same height as .slide */
+.add-slide { flex-shrink: 0; height: 720px; display: grid; place-items: center; padding: 0; border-radius: 12px; border: 3px dashed var(--border); background: none; color: var(--muted); }
 .add-slide:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .slide-col { position: relative; flex-shrink: 0; transition: opacity 0.15s; }
 .slide-col.dragging { opacity: 0.4; }
