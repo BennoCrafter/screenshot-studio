@@ -4,6 +4,7 @@ import { languageName, languagesOf, PROJECT_FILE, projectToFile, type Project } 
 import { labelOf } from './elements'
 import { localize, PLATFORMS, renderSlide, SIZES } from './render'
 import { openLink } from './Settings'
+import { useStored } from './prefs'
 import { loadCustom, saveCustom, shareTemplate, toData, type Template } from './templates'
 
 const THUMB_W = 132
@@ -11,28 +12,22 @@ const THUMB_W = 132
 /** How exported PNGs are sorted into subfolders. */
 const FOLDERS = { none: 'All in one folder', 'lang-device': 'Language › Device', 'device-lang': 'Device › Language' }
 type Folders = keyof typeof FOLDERS
-const storedFolders = (): Folders => {
-  try { return (localStorage.getItem('export-folders') as Folders | null) ?? 'none' } catch { return 'none' }
-}
 
 /** The Export button and its dialog: PNGs of the picked slides, platforms and languages, the project as a template, or as a .ssproj file. */
 export function Export({ project }: { project: Project }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [open, setOpen] = useState(false)
   const [thumbs, setThumbs] = useState<Record<string, string>>({}) // slide id → small preview
-  const [kind, setKind] = useState<'png' | 'template' | 'file'>('png')
+  const [kind, setKind] = useStored<'png' | 'template' | 'file'>('export-kind', 'png')
   const [skip, setSkip] = useState(new Set<string>()) // slide ids and language codes left out
   const [busy, setBusy] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [shots, setShots] = useState(true)
+  const [withShots, setWithShots] = useStored<'on' | 'off'>('export-shots', 'on')
+  const shots = withShots === 'on'
   const [share, setShare] = useState(false) // opt in, and confirmed again before anything leaves the machine
   const [done, setDone] = useState<string | null>(null)
-  const [folders, setFolders] = useState(storedFolders)
-  const pickFolders = (f: Folders) => {
-    setFolders(f)
-    try { localStorage.setItem('export-folders', f) } catch { /* not remembered */ }
-  }
+  const [folders, pickFolders] = useStored<Folders>('export-folders', 'none')
   const [progress, setProgress] = useState<{ n: number; of: number; what: string } | null>(null) // PNG export under way
 
   const langs = languagesOf(project)
@@ -213,7 +208,7 @@ export function Export({ project }: { project: Project }) {
             <p className="hint">Saves the whole project, every platform, as a template to start new projects from.</p>
             <label>Name<input value={name} onChange={(e) => setName(e.target.value)} /></label>
             <label>Description<input value={description} placeholder="What it looks like, who it's for" onChange={(e) => setDescription(e.target.value)} /></label>
-            <label><input type="checkbox" checked={shots} onChange={(e) => setShots(e.target.checked)} />Include screenshots and images</label>
+            <label><input type="checkbox" checked={shots} onChange={(e) => setWithShots(e.target.checked ? 'on' : 'off')} />Include screenshots and images</label>
             <p className="hint">Turn this off to remove every screenshot and image from the template. The text, colors, devices and layout stay.</p>
             {isDesktop && (
               <>
