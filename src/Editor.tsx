@@ -270,6 +270,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         : borrowed ? `${languageName(lang)} has no screenshot ID of its own, so it shows the ${languageName(langs[0])} screenshot (${id})`
         : ok ? `${id} is in the screenshot folder` : `No file named ${id} in the screenshot folder` } as const]
   })) : undefined
+  const [reveal, setReveal] = useState<{ slide: string }>() // a slide picked by keyboard, brought on screen
 
   // Esc clears the selection, so the board is in focus with nothing picked; ⌘Z/⇧⌘Z undo and redo, ⌘C/⌘V/⌘D copy, paste and
   // duplicate, ⌘A picks every element, Delete removes the picked ones; I toggles the screenshot badges, L / D step through
@@ -294,7 +295,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       else if (key === 'd') showTarget((project.targets.indexOf(target) + step + project.targets.length) % project.targets.length)
       else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         const i = sel ? slides.indexOf(sel) + (e.key === 'ArrowLeft' ? -1 : 1) : 0
-        if (slides[i]) selectSlide(slides[i].id)
+        if (slides[i]) { selectSlide(slides[i].id); setReveal({ slide: slides[i].id }) }
       }
       else return
       e.preventDefault()
@@ -493,7 +494,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         )}
       </aside>
 
-      <Board fitKey={`${target.platform}-${target.size}-${!!target.landscape}`} onEmptyClick={() => selectSlide(null)}>
+      <Board fitKey={`${target.platform}-${target.size}-${!!target.landscape}`} onEmptyClick={() => selectSlide(null)} reveal={reveal}>
         {slides.map((s, i) => (
           <div
             key={s.id}

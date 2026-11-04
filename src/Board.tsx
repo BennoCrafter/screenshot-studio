@@ -6,9 +6,9 @@ const typing = (t: EventTarget | null) => t instanceof HTMLElement && t.matches(
 /**
  * An infinite board: Ctrl/⌘ + scroll or a trackpad pinch zooms at the cursor, scroll pans (Shift + scroll sideways),
  * Ctrl/⌘-drag, Space-drag, middle-drag or dragging empty space pans. ⌘/Ctrl + = − 0 zoom in, out and fit.
- * Children get `--z` (the zoom) so handles can stay the same size on screen.
+ * Children get `--z` (the zoom) so handles can stay the same size on screen. A new `reveal` pans its slide on screen.
  */
-export function Board({ children, fitKey, onEmptyClick }: { children: ReactNode; fitKey: unknown; onEmptyClick?: () => void }) {
+export function Board({ children, fitKey, onEmptyClick, reveal }: { children: ReactNode; fitKey: unknown; onEmptyClick?: () => void; reveal?: { slide: string } }) {
   const stage = useRef<HTMLDivElement>(null)
   const board = useRef<HTMLDivElement>(null)
   const [view, setView] = useState({ x: 0, y: 0, z: 1 })
@@ -30,6 +30,16 @@ export function Board({ children, fitKey, onEmptyClick }: { children: ReactNode;
     setView({ z, x: (s.clientWidth - b.offsetWidth * z) / 2, y: (s.clientHeight - b.offsetHeight * z) / 2 - 24 })
   }
   useLayoutEffect(fit, [fitKey])
+
+  useEffect(() => {
+    const el = reveal && board.current!.querySelector(`canvas[data-slide="${reveal.slide}"]`)
+    if (!el) return
+    const r = el.getBoundingClientRect(), s = stage.current!.getBoundingClientRect()
+    // the least pan that fits it (left/top edge first when it can't), leaving room below for the slide's bar
+    const by = (lo: number, hi: number, from: number, to: number) => (lo < from ? from - lo : hi > to ? Math.max(to - hi, from - lo) : 0)
+    const dx = by(r.left, r.right, s.left + 48, s.right - 48), dy = by(r.top, r.bottom, s.top + 32, s.bottom - 80)
+    if (dx || dy) setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }))
+  }, [reveal])
 
   useEffect(() => {
     const s = stage.current!
