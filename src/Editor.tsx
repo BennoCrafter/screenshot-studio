@@ -1,48 +1,34 @@
-import { createContext, Fragment, useContext, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Board } from './Board'
 import { DEVICES, DEVICE_BY_ID, restFold } from './devices/models'
-import type { DevicePose } from './devices/render3d'
 import { Chat } from './Chat'
 import { Themes } from './Themes'
-import { openSettings } from './Settings'
 import { animate } from './motion'
-import { ask, FONT_FILES, IMAGE_FILES, isDesktop, openFiles, tell, typing } from './native'
-import { fontFamily, fontFrom, LANGUAGES, languageName, languagesOf, loadImage, type Project, type ProjectFont } from './project'
-import { useStored } from './prefs'
-import { added, isDevice, isText, itemOf, kindOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotIdOf, shotIdsOf, shotOf, withShot, withShotId, withText, type Shot } from './elements'
-import { FONT, FONTS, layersOf, localize, PLATFORMS, sizeOf, type Item, type Part, type Platform, type Slide, type Style, type Target } from './render'
+import { ask, isDesktop, typing } from './native'
+import { fontFrom, languageName, languagesOf, type Project } from './project'
+import { openSettings, useStored, useWidth } from './prefs'
+import { added, isDevice, isText, itemOf, kindOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotIdOf, shotIdsOf, transferred, withShot, withText } from './elements'
+import { clamp, layersOf, localize, PLATFORMS, sizeOf, type Item, type Part, type Platform, type Slide, type Style, type Target } from './render'
 import { SlideCanvas } from './SlideCanvas'
-import { SHAPES } from './shapes'
 import { watchShotFolder } from './shotFolder'
 import { Export } from './Export'
 import { adaptTarget, ALL_PLATFORMS, poseFor, rotateTarget } from './templates'
+import { useHistory, type Updater } from './history'
+import { SlideInspector } from './Inspector'
+import { LanguageDialog } from './LanguageDialog'
+import { Layers, Palette } from './Palette'
+import { Icon, Menu, Resizer } from './ui'
 
-type Updater<T> = (fn: (v: T) => T) => void
 /** One element on one slide. */
 type Sel = { slide: string; part: Part }
 const same = (a: Sel, b: Sel) => a.slide === b.slide && a.part === b.part
 
-// Copied elements, kept across projects; ponytail: in-app only, the system clipboard holds just typed text
+// Copied elements, kept across projects; shortcut: in-app only, the system clipboard holds just typed text
 let clipboard: { part: Part; slide: Slide }[] = []
+const keep = (copied: typeof clipboard) => { clipboard = copied }
 
 export function Editor({ project, setProject: commit, onClose }: { project: Project; setProject: Updater<Project>; onClose: () => void }) {
-  // undo history: a burst of changes (one drag, a few words typed) is one step
-  const past = useRef<Project[]>([]), future = useRef<Project[]>([]), lastEdit = useRef(0)
-  const setProject: Updater<Project> = (fn) => {
-    if (Date.now() - lastEdit.current > 500) {
-      past.current = [...past.current.slice(-99), project]
-      future.current = []
-    }
-    lastEdit.current = Date.now()
-    commit(fn)
-  }
-  const travel = (from: React.RefObject<Project[]>, to: React.RefObject<Project[]>) => {
-    const p = from.current.pop()
-    if (!p) return
-    to.current.push(project)
-    lastEdit.current = 0
-    commit(() => p)
-  }
+  const { setProject, undo, redo, canUndo } = useHistory(project, commit)
 
   const [sideW, setSideW] = useWidth('side-w', 300)
   const [toolsW, setToolsW] = useWidth('tools-w', 220)
@@ -190,7 +176,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       const s = slides.find((s) => s.id === slide)
       return s && layersOf(s).includes(part) ? [{ part, slide: s }] : []
     })
-    if (picked.length) clipboard = picked
+    if (picked.length) keep(picked)
   }
   // the slide's own device pasted onto a slide replaces its device and screenshots; anything else is pasted as a
   // new object, nudged when it lands on the slide it came from
@@ -211,26 +197,11 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     }, s)))
     setSelection(picked)
   }
-  /** The picked elements on slide `fromId` moved onto `toId`, which sits (dx, dy) slide sizes away, keeping where they
-   *  are on screen. Text in every language goes along; the slide's own device replaces the one already there. */
+  /** The picked elements on slide `fromId` moved onto `toId`, which sits (dx, dy) slide sizes away. */
   const transfer = (fromId: string, toId: string, dx: number, dy: number) => {
     const parts = selection.filter((x) => x.slide === fromId).map((x) => x.part)
     setSlides((all) => {
-      let src = all.find((s) => s.id === fromId)!, to = all.find((s) => s.id === toId)!
-      // back to front, so they land on top of the other slide in the order they had
-      for (const part of layersOf(src).filter((p) => parts.includes(p))) {
-        to = { ...to, ...added(to, itemOf(src, part) ?? part) }
-        if (part === 'device') to = { ...to, device: src.device, image: src.image, outerImage: src.outerImage }
-        for (const [l, t] of Object.entries(src.translations ?? {})) {
-          const text = t.items?.[part]
-          if (text) to = { ...to, ...withText(to, part, text, l) }
-          const shots = t.shots?.[part]
-          if (shots) to = { ...to, ...withShot(to, part, { image: shots.image, outerImage: shots.outerImage }, l) }
-          if (shots?.shotId) to = { ...to, ...withShotId(to, part, shots.shotId, l) }
-        }
-        to = { ...to, ...moved(to, to, part, -dx, -dy) }
-        src = { ...src, ...removed(src, part) }
-      }
+      const [src, to] = transferred(all.find((s) => s.id === fromId)!, all.find((s) => s.id === toId)!, parts, dx, dy)
       return all.map((s) => (s.id === fromId ? src : s.id === toId ? to : s))
     })
     setSelection(parts.map((part) => ({ slide: toId, part })))
@@ -244,19 +215,20 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
   const [notice, setNotice] = useState('')
   const live = useRef({ project, setProject })
   const fetchShot = useRef<(id: string) => void>(undefined)
-  const [folderIds, setFolderIds] = useState(new Set<string>()) // screenshot IDs with a file in the folder
+  const [found, setFound] = useState<{ folder: string; ids: Set<string> }>() // screenshot IDs with a file in the folder
+  const folderIds = found && found.folder === project.shotFolder ? found.ids : new Set<string>()
   useEffect(() => { live.current = { project, setProject } })
   useEffect(() => {
-    setFolderIds(new Set())
-    if (!isDesktop || !project.shotFolder) return
+    const folder = project.shotFolder
+    if (!isDesktop || !folder) return
     let hide: ReturnType<typeof setTimeout>
-    const folder = watchShotFolder(() => live.current.project, (fn) => live.current.setProject(fn), (msg) => {
+    const watch = watchShotFolder(() => live.current.project, (fn) => live.current.setProject(fn), (msg) => {
       setNotice(msg)
       clearTimeout(hide)
       hide = setTimeout(() => setNotice(''), 6000)
-    }, setFolderIds)
-    fetchShot.current = folder.fetch
-    return () => { folder.stop(); fetchShot.current = undefined; clearTimeout(hide) }
+    }, (ids) => setFound({ folder, ids }))
+    fetchShot.current = watch.fetch
+    return () => { watch.stop(); fetchShot.current = undefined; clearTimeout(hide) }
   }, [project.shotFolder])
   // badges on the device frames: green when their screenshot ID has a file in the screenshot folder, amber when only the
   // primary language's does (this language has no ID of its own, so it shows that screenshot)
@@ -281,8 +253,8 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       if (typing(e.target) || document.querySelector('dialog[open]')) return
       const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase(), step = e.shiftKey ? -1 : 1
       if (e.key === 'Escape') { selectSlide(null); setMenu(null) }
-      else if (mod && key === 'z') travel(e.shiftKey ? future : past, e.shiftKey ? past : future)
-      else if (mod && key === 'y') travel(future, past)
+      else if (mod && key === 'z') (e.shiftKey ? redo : undo)()
+      else if (mod && key === 'y') redo()
       else if (mod && key === 'c') copy()
       else if (mod && key === 'v') paste()
       else if (mod && key === 'd') duplicate()
@@ -343,8 +315,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       document.body.append(k)
       // held where the pointer is on the slide (the handle sits under it: the thumbnail's bottom edge), not by its middle
       const r = src.getBoundingClientRect()
-      const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
-      e.dataTransfer.setDragImage(k, clamp01((e.clientX - r.left) / r.width) * k.width, clamp01((e.clientY - r.top) / r.height) * k.height)
+      e.dataTransfer.setDragImage(k, clamp((e.clientX - r.left) / r.width, 0, 1) * k.width, clamp((e.clientY - r.top) / r.height, 0, 1) * k.height)
       setTimeout(() => k.remove())
     }
     setDragged(i)
@@ -359,13 +330,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     }
   }
 
-  const move = (sel: Slide, dir: -1 | 1) => {
-    const i = slides.indexOf(sel), j = i + dir
-    if (j < 0 || j >= slides.length) return
-    const next = [...slides]
-    ;[next[i], next[j]] = [next[j], next[i]]
-    setSlides(() => next)
-  }
+  const move = (sel: Slide, dir: -1 | 1) => moveTo(slides.indexOf(sel), slides.indexOf(sel) + dir)
 
   return (
     <div className="app" style={{ '--side-w': `${sideW}px`, '--tools-w': `${toolsW}px` } as React.CSSProperties}>
@@ -411,54 +376,10 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         <Export project={project} />
       </header>
 
-
       {/* outside the panel, which scrolls: inside it'd be clipped and scroll away */}
-      <Resizer edge="right" set={(x) => setToolsW(Math.min(420, Math.max(180, x)))} />
+      <Resizer edge="right" set={(x) => setToolsW(clamp(x, 180, 420))} />
       <aside className="tools">
-        <h3>Elements</h3>
-        <details className="add-section" open>
-        <summary>Text</summary>
-        <div className="add-grid">
-          <button onClick={() => insert(() => newItem('text'))}><Icon d="M5 6V4h14v2M12 4v16M9 20h6" />Text</button>
-          {TEXT_PRESETS.map(([label, preset]) => (
-            <button key={label} onClick={() => insert(() => ({ ...newItem('text'), text: label, ...preset }))}>
-              <span className="glyph" style={{ fontWeight: preset.weight, fontSize: 10 + preset.size * 100 }}>Aa</span>{label}
-            </button>
-          ))}
-        </div>
-        </details>
-        <details className="add-section" open>
-        <summary>Media</summary>
-        <div className="add-grid">
-          <button onClick={async () => {
-            const [f] = await openFiles(IMAGE_FILES)
-            if (f) { const img = await loadImage(f); insert(() => newItem('image', img)) }
-          }}><Icon d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9.5h.01" />Image</button>
-          <button onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setDeviceMenu({ x: r.left, y: r.bottom + 4 }) }}><Icon d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM11 18h2" />Device</button>
-        </div>
-        </details>
-        {(['Shapes', 'Badges', 'Icons'] as const).map((group) => (
-          <details key={group} className="add-section">
-            <summary>{group}</summary>
-            <div className="add-grid">
-              {group === 'Shapes' && (
-                <>
-                  <button onClick={() => insert(() => newItem('rect'))}><Icon d="M4 6h16v12H4z" />Rectangle</button>
-                  <button onClick={() => insert(() => newItem('ellipse'))}><Icon d="M12 5c4.4 0 8 3.1 8 7s-3.6 7-8 7-8-3.1-8-7 3.6-7 8-7z" />Ellipse</button>
-                </>
-              )}
-              {Object.entries(SHAPES).filter(([, s]) => s.group === group).map(([name, s]) => (
-                <button key={name} onClick={() => insert(() => newItem('shape', undefined, undefined, name))}>
-                  <svg viewBox={`0 0 ${s.vw} ${s.vh}`} width="20" height="20" aria-hidden
-                    {...(s.stroke ? { fill: 'none', stroke: 'currentColor', strokeWidth: s.stroke, strokeLinecap: 'round', strokeLinejoin: 'round' } : { fill: 'currentColor' })}>
-                    <path d={s.d} />
-                  </svg>
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </details>
-        ))}
+        <Palette insert={insert} onDevice={setDeviceMenu} />
 
         <h3>Slides <span>{slides.length}</span></h3>
         <ol className="slide-list">
@@ -532,61 +453,49 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         </button>
       </Board>
       {deviceMenu && (
-        <div className="menu-backdrop" onPointerDown={() => setDeviceMenu(null)}>
-          <div className="menu" ref={(el) => { if (el) el.style.top = `${Math.max(8, Math.min(deviceMenu.y, innerHeight - el.offsetHeight - 8))}px` }}
-            style={{ left: deviceMenu.x, top: deviceMenu.y }} onPointerDown={(e) => e.stopPropagation()} onClick={() => setDeviceMenu(null)}>
-            {[...new Set(DEVICES.map((d) => d.family))].map((f, n) => (
-              <Fragment key={f}>
-                {n > 0 && <hr />}
-                <span className="menu-head">{f}</span>
-                {DEVICES.filter((d) => d.family === f).map((d) => <button key={d.id} onClick={() => insertDevice(d.id)}>{d.label}</button>)}
-              </Fragment>
-            ))}
-          </div>
-        </div>
+        <Menu at={deviceMenu} onClose={() => setDeviceMenu(null)}>
+          {[...new Set(DEVICES.map((d) => d.family))].map((f, n) => (
+            <Fragment key={f}>
+              {n > 0 && <hr />}
+              <span className="menu-head">{f}</span>
+              {DEVICES.filter((d) => d.family === f).map((d) => <button key={d.id} onClick={() => insertDevice(d.id)}>{d.label}</button>)}
+            </Fragment>
+          ))}
+        </Menu>
       )}
       {addMenu && (
-        <div className="menu-backdrop" onPointerDown={() => setAddMenu(null)}>
-          <div className="menu" style={{ left: addMenu.x, top: addMenu.y }} onPointerDown={(e) => e.stopPropagation()} onClick={() => setAddMenu(null)}>
-            {missing.map((p) => <button key={p} onClick={() => addPlatform(p)}>Add {PLATFORMS[p].label}</button>)}
-          </div>
-        </div>
+        <Menu at={addMenu} onClose={() => setAddMenu(null)}>
+          {missing.map((p) => <button key={p} onClick={() => addPlatform(p)}>Add {PLATFORMS[p].label}</button>)}
+        </Menu>
       )}
       {menu && (
-        <div className="menu-backdrop" onPointerDown={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null) }}>
-          <div className="menu" ref={(el) => {
-            if (!el) return
-            const r = el.getBoundingClientRect()
-            el.style.left = `${Math.max(8, Math.min(menu.x, innerWidth - r.width - 8))}px`
-            el.style.top = `${Math.max(8, Math.min(menu.y, innerHeight - r.height - 8))}px`
-          }} onPointerDown={(e) => e.stopPropagation()} onClick={() => setMenu(null)}>
-            {selection.length === 1 && sel && isText(sel, selection[0].part) && (
-              <button onClick={() => setEditing(selection[0])}>Edit text</button>
-            )}
-            <button onClick={copy}>Copy<kbd>⌘C</kbd></button>
-            <button onClick={paste} disabled={!clipboard.length}>Paste<kbd>⌘V</kbd></button>
+        <Menu at={menu} onClose={() => setMenu(null)}>
+          {selection.length === 1 && sel && isText(sel, selection[0].part) && (
+            <button onClick={() => setEditing(selection[0])}>Edit text</button>
+          )}
+          <button onClick={copy}>Copy<kbd>⌘C</kbd></button>
+          <button onClick={paste} disabled={!clipboard.length}>Paste<kbd>⌘V</kbd></button>
+          <hr />
+          <button onClick={() => eachPicked((s, p) => restack(s, p, () => Infinity))}>Bring to front</button>
+          <button onClick={() => eachPicked((s, p) => restack(s, p, (n) => n + 1))}>Bring forward</button>
+          <button onClick={() => eachPicked((s, p) => restack(s, p, (n) => n - 1))}>Send backward</button>
+          <button onClick={() => eachPicked((s, p) => restack(s, p, () => 0))}>Send to back</button>
+          <hr />
+          <button onClick={duplicate}>Duplicate<kbd>⌘D</kbd></button>
+          <button onClick={() => eachPicked(reset)}>Reset position</button>
+          <button onClick={remove}>Delete<kbd>⌫</kbd></button>
+          <button onClick={undo} disabled={!canUndo}>Undo<kbd>⌘Z</kbd></button>
+          {sel && <>
             <hr />
-            <button onClick={() => eachPicked((s, p) => restack(s, p, () => Infinity))}>Bring to front</button>
-            <button onClick={() => eachPicked((s, p) => restack(s, p, (n) => n + 1))}>Bring forward</button>
-            <button onClick={() => eachPicked((s, p) => restack(s, p, (n) => n - 1))}>Send backward</button>
-            <button onClick={() => eachPicked((s, p) => restack(s, p, () => 0))}>Send to back</button>
-            <hr />
-            <button onClick={duplicate}>Duplicate<kbd>⌘D</kbd></button>
-            <button onClick={() => eachPicked(reset)}>Reset position</button>
-            <button onClick={remove}>Delete<kbd>⌫</kbd></button>
-            <button onClick={() => travel(past, future)} disabled={!past.current.length}>Undo<kbd>⌘Z</kbd></button>
-            {sel && <>
-              <hr />
-              <button onClick={() => move(sel, -1)} disabled={slides.indexOf(sel) === 0}>Move slide left</button>
-              <button onClick={() => move(sel, 1)} disabled={slides.indexOf(sel) === slides.length - 1}>Move slide right</button>
-              <button onClick={() => removeSlide(sel)} disabled={slides.length === 1}>Delete slide</button>
-            </>}
-          </div>
-        </div>
+            <button onClick={() => move(sel, -1)} disabled={slides.indexOf(sel) === 0}>Move slide left</button>
+            <button onClick={() => move(sel, 1)} disabled={slides.indexOf(sel) === slides.length - 1}>Move slide right</button>
+            <button onClick={() => removeSlide(sel)} disabled={slides.length === 1}>Delete slide</button>
+          </>}
+        </Menu>
       )}
 
       <aside className="side">
-        <Resizer edge="left" set={(x) => setSideW(Math.min(700, Math.max(260, window.innerWidth - x)))} />
+        <Resizer edge="left" set={(x) => setSideW(clamp(window.innerWidth - x, 260, 700))} />
         {isDesktop && (
           <nav className="platform-tabs side-tabs">
             <span className={tab === 'inspector' ? 'on' : ''}><button onClick={() => setTab('inspector')}>Inspector</button></span>
@@ -640,419 +549,5 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       </aside>
       {notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}
     </div>
-  )
-}
-
-/** The picked element's settings (the last one, when several are picked), then the slide's own. */
-function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update, edit, likes, pickedSlides, updateSlides, shotIdUser, fetchShot }: {
-  sel: Slide
-  fonts: ProjectFont[] // the project's own
-  addFont: (file: File) => Promise<ProjectFont>
-  fontForAll: (font: string) => void
-  part: Part | null // the picked element on this slide
-  lang?: string // the language being edited, when not the primary one: text and screenshots set here are its own
-  setText: (part: Part, text: string) => void
-  index: number
-  size: readonly [number, number] // the slide in px
-  update: (patch: Partial<Slide>) => void
-  /** Applies `fn` to every picked element of the shown one's kind, on any picked slide. */
-  edit: (fn: (s: Slide, part: Part) => Partial<Slide>) => void
-  likes: Picked[] // those elements
-  pickedSlides: Slide[] // slides with something picked
-  /** Sets the slide's own settings (background, …) on every picked slide. */
-  updateSlides: (patch: Partial<Slide>) => void
-  /** Where else in the project a screenshot ID is used, if anywhere: elements may share one. */
-  shotIdUser: (id: string, part: Part) => string | null
-  fetchShot: (id: string) => void // the screenshot folder's file for this ID, if any, applied now
-}) {
-  const item = part ? itemOf(sel, part) : undefined
-  const at = part ? positionOf(sel, part, size) : null
-  const likeCount = likes.length, slideCount = pickedSlides.length
-  const slidesDiffer = (get: (s: Slide) => unknown) => differ(pickedSlides.map(get))
-  const posDiffers = (axis: 'x' | 'y') => differ(likes.map(({ s, p }) => Math.round(positionOf(s, p, size)[axis])))
-  const [showIds] = useStored<'on' | 'off'>('shot-ids', 'off')
-  const setItem = (patch: Partial<Item> | ((i: Item) => Partial<Item>)) =>
-    edit((s, p) => ({ items: s.items!.map((i) => (i.id === p ? { ...i, ...(typeof patch === 'function' ? patch(i) : patch) } : i)) }))
-  // under the element's screenshot picker
-  const idField = part && showIds === 'on' && (
-    <ShotIdField key={`${part} ${lang}`} id={shotIdOf(sel, part, lang) ?? ''} lang={lang} user={(id) => shotIdUser(id, part)} set={(id) => update(withShotId(sel, part, id, lang))} fetch={fetchShot} />
-  )
-  return (
-    <Picks.Provider value={likes}>
-    <div className="inspector-body">
-      {part && <h2>{likeCount > 1 ? `${likeCount} ${kindName(sel, part)}` : partName(sel, part)}</h2>}
-      {part && likeCount > 1 && <p className="hint">Changes here apply to all {likeCount} picked {kindName(sel, part)}, on every picked slide. Text and screenshot IDs stay their own.</p>}
-      {part && at && (
-        <div className="vec2">
-          <span>Position{(posDiffers('x') || posDiffers('y')) && <Mixed />}</span>
-          {(['x', 'y'] as const).map((axis) => (
-            <ScrubNumber key={axis} axis={axis} value={Math.round(at[axis])} onChange={(v) =>
-              edit((s, p) => { const a = positionOf(s, p, size); return moved(s, s, p, axis === 'x' ? (v - a.x) / size[0] : 0, axis === 'y' ? (v - a.y) / size[1] : 0) })} />
-          ))}
-        </div>
-      )}
-      {part && isDevice(sel, part) && <DeviceInspector sel={sel} device={part} lang={lang} edit={edit} idField={idField} />}
-      {item?.kind === 'text' && <TextInspector item={item} sel={sel} lang={lang} fonts={fonts} addFont={addFont} fontForAll={fontForAll} set={setItem} setText={(t) => setText(item.id, t)} />}
-      {(item?.kind === 'rect' || item?.kind === 'ellipse' || item?.kind === 'shape') && (
-        <label>Color{differ(likes.map(({ s, p }) => itemOf(s, p)?.color ?? s.textColor)) && <Mixed />}<input type="color" value={item.color ?? sel.textColor} onChange={(e) => setItem({ color: e.target.value })} /></label>
-      )}
-      {item?.kind === 'image' && (
-        <>
-          <ShotPicker label="Image" image={item.image ?? null} set={(image) => setItem((i) => ({ image, h: (i.w * image.naturalHeight) / image.naturalWidth }))} />
-          {idField}
-        </>
-      )}
-
-      <h2 className={part ? 'inspector-slide' : undefined}>{slideCount > 1 ? `${slideCount} slides` : `Slide ${index + 1}`}</h2>
-      {slideCount > 1 && <p className="hint">Background, text color and gradient angle change on all {slideCount} picked slides.</p>}
-      <div className="row">
-        <label>Background{(slidesDiffer((s) => s.bg1) || slidesDiffer((s) => s.bg2)) && <Mixed />}<input type="color" value={sel.bg1} onChange={(e) => updateSlides({ bg1: e.target.value })} /></label>
-        <label>&nbsp;<input type="color" value={sel.bg2} onChange={(e) => updateSlides({ bg2: e.target.value })} /></label>
-        <label>Text{slidesDiffer((s) => s.textColor) && <Mixed />}<input type="color" value={sel.textColor} onChange={(e) => updateSlides({ textColor: e.target.value })} /></label>
-      </div>
-      <div className="field">
-        <div className="field-head">
-          Gradient angle · {slidesDiffer((s) => s.angle) ? 'Mixed' : `${sel.angle}°`}
-          {sel.angle !== 0 && <button type="button" className="link" onClick={() => updateSlides({ angle: 0 })}>Reset</button>}
-        </div>
-        <input type="range" aria-label="Gradient angle" min={0} max={360} value={sel.angle} onDoubleClick={() => updateSlides({ angle: 0 })} onChange={(e) => updateSlides({ angle: +e.target.value })} />
-      </div>
-    </div>
-    </Picks.Provider>
-  )
-}
-
-type Picked = { s: Slide; p: Part }
-/** The picked elements the inspector edits together, so their settings can say when they differ. */
-const Picks = createContext<Picked[]>([])
-const differ = (values: unknown[]) => new Set(values).size > 1
-/** Whether the picked elements disagree on a setting. */
-function useDiffers() {
-  const picks = useContext(Picks)
-  return (get: (s: Slide, p: Part) => unknown) => differ(picks.map(({ s, p }) => get(s, p)))
-}
-/** Marks a setting the picked elements or slides disagree on: it shows the last one's value. */
-const Mixed = () => <small className="mixed"> · Mixed</small>
-
-/** 'texts', 'devices', … for a heading over several picked elements. */
-const kindName = (s: Slide, p: Part) => ({ text: 'texts', rect: 'rectangles', ellipse: 'ellipses', shape: 'shapes', image: 'images', device: 'devices' })[kindOf(s, p) ?? 'text']
-
-/** A number with its axis letter in front, like Godot, Blender or Unity: type it, or drag the letter sideways to scrub (Shift for fine steps). */
-function ScrubNumber({ axis, value, onChange }: { axis: 'x' | 'y'; value: number; onChange: (v: number) => void }) {
-  const start = useRef<{ x: number; v: number } | null>(null)
-  return (
-    <label className={`scrub ${axis}`}>
-      <b
-        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); start.current = { x: e.clientX, v: value } }}
-        onPointerMove={(e) => start.current && onChange(Math.round(start.current.v + (e.clientX - start.current.x) * (e.shiftKey ? 0.2 : 2)))}
-        onPointerUp={() => (start.current = null)}
-        onPointerCancel={() => (start.current = null)}
-      >{axis.toUpperCase()}</b>
-      <input type="number" value={value} onChange={(e) => e.target.value !== '' && onChange(+e.target.value)} />
-    </label>
-  )
-}
-
-/** Texts with their size and weight set, as the templates use them. */
-const TEXT_PRESETS = [
-  ['Headline', { size: 0.085, weight: 800 }],
-  ['Subtitle', { size: 0.042, weight: 500 }],
-  ['Caption', { size: 0.03, weight: 500, opacity: 0.8 }],
-] as const satisfies readonly (readonly [string, Partial<Item> & { size: number; weight: number }])[]
-
-const WEIGHTS = [[300, 'Light'], [400, 'Regular'], [500, 'Medium'], [600, 'Semibold'], [700, 'Bold'], [800, 'Heavy'], [900, 'Black']] as const
-
-function TextInspector({ item, sel, lang, fonts, addFont, fontForAll, set, setText }: {
-  item: Item
-  sel: Slide
-  lang?: string
-  fonts: ProjectFont[]
-  addFont: (file: File) => Promise<ProjectFont>
-  fontForAll: (font: string) => void
-  set: (patch: Partial<Item>) => void
-  setText: (text: string) => void
-}) {
-  const weight = item.weight ?? 600, font = item.font ?? FONT
-  const known = [...fonts.map((f) => fontFamily(f.name)), ...Object.values(FONTS)]
-  const differs = useDiffers(), one = useContext(Picks).length <= 1
-  const its = (get: (i: Item) => unknown) => differs((s, p) => { const i = itemOf(s, p); return i && get(i) })
-  return (
-    <>
-      {one && (
-        <label>
-          Text
-          {/* another language shows the primary language's words until it has its own */}
-          <textarea rows={3} value={lang ? sel.translations?.[lang]?.items?.[item.id] ?? '' : item.text ?? ''} placeholder={lang ? item.text : undefined}
-            onChange={(e) => setText(e.target.value)} />
-        </label>
-      )}
-      <div className="field">
-        <div className="field-head">
-          <span>Font{its((i) => i.font ?? FONT) && <Mixed />}</span>
-          <span>
-            <button type="button" className="link" title="Use this font for every text in the project" onClick={() => fontForAll(font)}>Apply to all</button>
-            {' · '}
-            <button type="button" className="link" onClick={async () => {
-              const [f] = await openFiles(FONT_FILES)
-              if (!f) return
-              try {
-                set({ font: fontFamily((await addFont(f)).name) })
-              } catch (err) {
-                tell((err as Error).message)
-              }
-            }}>Add font…</button>
-          </span>
-        </div>
-        <select aria-label="Font" value={font} style={{ fontFamily: font }} onChange={(e) => set({ font: e.target.value })}>
-          {!known.includes(font) && <option value={font}>{font.split(',')[0].replace(/"/g, '')}</option>}
-          {fonts.length > 0 && (
-            <optgroup label="This project">
-              {fonts.map((f) => <option key={f.name} value={fontFamily(f.name)} style={{ fontFamily: fontFamily(f.name) }}>{f.name}</option>)}
-            </optgroup>
-          )}
-          <optgroup label="Built in">
-            {Object.entries(FONTS).map(([name, f]) => <option key={name} value={f} style={{ fontFamily: f }}>{name}</option>)}
-          </optgroup>
-        </select>
-      </div>
-      <div className="row">
-        <label>
-          <span>Size{its((i) => i.size ?? 0.05) && <Mixed />}</span>
-          <input type="number" min={1} max={50} step={0.1} value={Math.round((item.size ?? 0.05) * 1000) / 10}
-            onChange={(e) => +e.target.value > 0 && set({ size: +e.target.value / 100 })} />
-        </label>
-        <label>
-          <span>Weight{its((i) => i.weight ?? 600) && <Mixed />}</span>
-          <select value={weight} onChange={(e) => set({ weight: +e.target.value })}>
-            {!WEIGHTS.some(([w]) => w === weight) && <option value={weight}>{weight}</option>}
-            {WEIGHTS.map(([w, n]) => <option key={w} value={w}>{n}</option>)}
-          </select>
-        </label>
-      </div>
-      <input type="range" aria-label="Size" min={0.01} max={0.2} step={0.001} value={item.size ?? 0.05} onChange={(e) => set({ size: +e.target.value })} />
-      <div className="row">
-        <label>Color{differs((s, p) => itemOf(s, p)?.color ?? s.textColor) && <Mixed />}<input type="color" value={item.color ?? sel.textColor} onChange={(e) => set({ color: e.target.value })} /></label>
-        <label>
-          Opacity · {its((i) => i.opacity ?? 1) ? 'Mixed' : `${Math.round((item.opacity ?? 1) * 100)}%`}
-          <input type="range" min={0.1} max={1} step={0.01} value={item.opacity ?? 1} onChange={(e) => set({ opacity: +e.target.value })} />
-        </label>
-      </div>
-      <p className="hint">Double-click the text on the slide to type there. Size is a percentage of the slide's width.</p>
-    </>
-  )
-}
-
-/** A device's screenshots and pose: the slide's own (`device` = 'device') or an added one. */
-function DeviceInspector({ sel, device, lang, edit, idField }: { sel: Slide; device: Part; lang?: string; edit: (fn: (s: Slide, part: Part) => Partial<Slide>) => void; idField?: React.ReactNode }) {
-  const shot = shotOf(sel, device), pose = shot.device
-  const setShot = (patch: Partial<Shot>) => edit((s, p) => withShot(s, p, patch, lang))
-  const own = lang ? sel.translations?.[lang]?.shots?.[device] : undefined // this language's own screenshots
-  const shotLabel = (what: string, has?: HTMLImageElement | null) => (
-    <>{what}{lang && <small className="shot-lang">{has ? ` · ${languageName(lang)} only` : ' · same as primary'}{has && (
-      <button type="button" className="link" onClick={() => setShot({ [what === 'Screenshot' ? 'image' : 'outerImage']: null })}>Use primary</button>
-    )}</small>}</>
-  )
-  // each device keeps the rest of its own pose
-  const setDevice = (patch: Partial<DevicePose>) => edit((s, p) => withShot(s, p, { device: { ...shotOf(s, p).device, ...patch } }, lang))
-  const model = DEVICE_BY_ID[pose.model]
-  const differs = useDiffers()
-  const poses = (get: (d: DevicePose) => unknown) => differs((s, p) => get(shotOf(s, p).device))
-  const families = [...new Set(DEVICES.map((d) => d.family))]
-  return (
-    <>
-      <ShotPicker label={shotLabel('Screenshot', own?.image)} image={own?.image ?? shot.image} set={(image) => setShot({ image })} />
-      {model.outer && (
-        <ShotPicker label={shotLabel('Outer screenshot (shown when closed)', own?.outerImage)} image={own?.outerImage ?? shot.outerImage} set={(outerImage) => setShot({ outerImage })} />
-      )}
-      {idField}
-      <label>
-        <span>Device{poses((d) => d.model) && <Mixed />}</span>
-        <select value={model.id} onChange={(e) => setDevice({ model: e.target.value, finish: DEVICE_BY_ID[e.target.value].finishes[0].id })}>
-          {families.map((f) => (
-            <optgroup key={f} label={f}>
-              {DEVICES.filter((d) => d.family === f).map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
-            </optgroup>
-          ))}
-        </select>
-      </label>
-      <label>
-        <span>Finish{poses((d) => d.finish) && <Mixed />}</span>
-        <select value={pose.finish} onChange={(e) => setDevice({ finish: e.target.value })}>
-          {model.finishes.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-        </select>
-      </label>
-      <p className="hint">Drag the device to move it, the round grip in its middle to turn it, the second grip on a foldable or Mac to fold it, the corners to resize and the top handle to spin. Shift snaps to 15°.</p>
-      <label>
-        Device size · {poses((d) => d.size) ? 'Mixed' : `${Math.round(pose.size * 100)}%`}
-        <input type="range" min={0.3} max={1.2} step={0.01} value={pose.size} onChange={(e) => setDevice({ size: +e.target.value })} />
-      </label>
-      <AngleSlider label="Turn" max={180} value={pose.yaw} mixed={poses((d) => d.yaw)} set={(yaw) => setDevice({ yaw })} />
-      <AngleSlider label="Spin" max={180} value={pose.roll ?? 0} mixed={poses((d) => d.roll ?? 0)} set={(roll) => setDevice({ roll })} />
-      <AngleSlider label="Tilt" max={90} value={pose.pitch} mixed={poses((d) => d.pitch)} set={(pitch) => setDevice({ pitch })} />
-      {(model.fold || model.laptop) && (
-        <label>
-          {model.laptop ? 'Lid' : 'Fold'} · {poses((d) => d.fold) ? 'Mixed' : `${pose.fold}°`}
-          <input type="range" min={0} max={180} value={pose.fold} onChange={(e) => setDevice({ fold: +e.target.value })} />
-        </label>
-      )}
-      <label><input type="checkbox" checked={pose.shadow !== false} onChange={(e) => setDevice({ shadow: e.target.checked })} />Shadow{poses((d) => d.shadow !== false) && <Mixed />}</label>
-      <label><input type="checkbox" checked={pose.reflections !== false} onChange={(e) => setDevice({ reflections: e.target.checked })} />Reflections{poses((d) => d.reflections !== false) && <Mixed />}</label>
-    </>
-  )
-}
-
-/** A −max…max° slider that snaps to 0 near it; Reset or a double-click sets it back to 0. */
-function AngleSlider({ label, max, value, mixed, set }: { label: string; max: number; value: number; mixed?: boolean; set: (v: number) => void }) {
-  const keys = useRef(false) // arrow keys step 1° and must not snap back, or they could never leave 0
-  return (
-    <div className="field">
-      <div className="field-head">
-        {label} · {mixed ? 'Mixed' : `${value}°`}
-        {(mixed || value !== 0) && <button type="button" className="link" onClick={() => set(0)}>Reset</button>}
-      </div>
-      <input type="range" aria-label={label} min={-max} max={max} value={value} onDoubleClick={() => set(0)}
-        onKeyDown={() => (keys.current = true)} onPointerDown={() => (keys.current = false)}
-        onChange={(e) => set(!keys.current && Math.abs(+e.target.value) <= 4 ? 0 : +e.target.value)} />
-    </div>
-  )
-}
-
-/** An element's screenshot ID: a file of that name in the screenshot folder replaces its screenshot, on every element
- * with that ID. */
-function ShotIdField({ id, lang, user, set, fetch }: { id: string; lang?: string; user: (id: string) => string | null; set: (id: string) => void; fetch: (id: string) => void }) {
-  const [draft, setDraft] = useState(id)
-  const was = useRef(id) // the ID when the field got focus: leaving it with a new one fetches that screenshot
-  const shared = draft ? user(draft) : null
-  return (
-    <label title="A file named after this ID in the project's screenshot folder (Settings › Project) replaces this screenshot">
-      Screenshot ID{lang && ` (${languageName(lang)})`}
-      <input value={draft} onFocus={() => (was.current = draft)} onBlur={() => draft && draft !== was.current && fetch(draft)} placeholder={lang ? `e.g. home-screen-${lang}` : 'e.g. home-screen'} spellCheck={false} onChange={(e) => {
-        const v = e.target.value.replace(/\s/g, '-')
-        setDraft(v)
-        set(v)
-      }} />
-      {shared && <small className="mixed">Also on {shared}</small>}
-    </label>
-  )
-}
-
-/** A screenshot slot: shows the one set (it survives reloads, unlike a file input's name) and opens a picker for another. */
-function ShotPicker({ label, image, set }: { label: React.ReactNode; image: HTMLImageElement | null; set: (img: HTMLImageElement) => void }) {
-  return (
-    <label>
-      {label}
-      <button type="button" className="shot-picker" onClick={async () => {
-        const [f] = await openFiles(IMAGE_FILES)
-        if (f) set(await loadImage(f))
-      }}>
-        {image ? <><img src={image.src} alt="" />Replace…</> : 'Choose image…'}
-      </button>
-    </label>
-  )
-}
-
-/** The slide's elements, frontmost first: click to pick (Shift adds), arrows move one up or down the stack. */
-/** A panel width, remembered between launches. */
-function useWidth(key: string, initial: number) {
-  const [w, setW] = useState(() => { try { return Number(localStorage.getItem(key)) || initial } catch { return initial } })
-  useEffect(() => { try { localStorage.setItem(key, String(w)) } catch { /* not remembered */ } }, [key, w])
-  return [w, setW] as const
-}
-
-/** A drag handle on a panel's edge; `set` gets the pointer's x. */
-function Resizer({ edge, set }: { edge: 'left' | 'right'; set: (x: number) => void }) {
-  return (
-    <div
-      className={`resizer ${edge}`}
-      title="Drag to resize"
-      onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
-      onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && set(e.clientX)}
-    />
-  )
-}
-
-const Icon = ({ d }: { d: string }) => (
-  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={d} /></svg>
-)
-
-function Layers({ sel, picked, pick, update }: {
-  sel: Slide
-  picked: Part[]
-  pick: (part: Part, additive: boolean) => void
-  update: (patch: Partial<Slide>) => void
-}) {
-  const order = layersOf(sel).toReversed()
-  return (
-    <ul className="layers">
-      {order.map((p, i) => (
-        <li key={p} className={picked.includes(p) ? 'on' : ''}>
-          <button onClick={(e) => pick(p, e.shiftKey)}>{partName(sel, p)}</button>
-          <button title="Bring forward" disabled={i === 0} onClick={() => update(restack(sel, p, (n) => n + 1))}>↑</button>
-          <button title="Send backward" disabled={i === order.length - 1} onClick={() => update(restack(sel, p, (n) => n - 1))}>↓</button>
-        </li>
-      ))}
-      <li><button disabled>Background</button></li>
-    </ul>
-  )
-}
-
-const localNames = new Intl.DisplayNames(undefined, { type: 'language' })
-const englishNames = new Intl.DisplayNames(['en'], { type: 'language' })
-
-/** A language tag in canonical form ("de-at" → "de-AT"), or the text as typed for a custom language. */
-function toCode(text: string) {
-  try {
-    return Intl.getCanonicalLocales(text.trim())[0]
-  } catch {
-    return text.trim()
-  }
-}
-
-/** Search the App Store languages by any of their names, or add one of your own. */
-function LanguageDialog({ dialog, have, onAdd }: {
-  dialog: React.RefObject<HTMLDialogElement | null>
-  have: string[]
-  onAdd: (code: string) => void
-}) {
-  const [q, setQ] = useState('')
-  const query = q.trim().toLowerCase()
-  const names = (l: string) => [l, languageName(l), localNames.of(l), englishNames.of(l)].map((n) => n?.toLowerCase() ?? '')
-  const matches = LANGUAGES.filter((l) => !have.includes(l) && names(l).some((n) => n.includes(query)))
-  const exact = LANGUAGES.some((l) => names(l).includes(query))
-  const custom = query && !exact && !have.includes(toCode(q)) ? toCode(q) : null
-  const pick = (code: string) => {
-    onAdd(code)
-    setQ('')
-    dialog.current!.close()
-  }
-  return (
-    <dialog ref={dialog} className="lang-dialog" onClick={(e) => e.target === dialog.current && dialog.current!.close()} onClose={() => setQ('')}>
-      <form onSubmit={(e) => {
-        e.preventDefault()
-        const first = matches[0] ?? custom
-        if (first) pick(first)
-      }}>
-        <h2>Add a language</h2>
-        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search or type a language, e.g. German or de-AT" />
-        <ul>
-          {matches.map((l) => (
-            <li key={l}>
-              <button type="button" onClick={() => pick(l)}>
-                {languageName(l)}
-                <small>{localNames.of(l) !== languageName(l) ? `${localNames.of(l)} · ` : ''}{l}</small>
-              </button>
-            </li>
-          ))}
-          {custom && (
-            <li>
-              <button type="button" onClick={() => pick(custom)}>
-                Add “{languageName(custom)}”
-                <small>custom</small>
-              </button>
-            </li>
-          )}
-        </ul>
-      </form>
-    </dialog>
   )
 }

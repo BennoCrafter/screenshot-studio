@@ -1,6 +1,7 @@
 // Templates describe a project per platform: canvas size plus each slide's colors, texts and other
 // items, and device pose, and optionally its screenshots and images (as data URLs).
 
+import { useEffect, useState } from 'react'
 import { DEVICE_BY_ID, restFold } from './devices/models'
 import { renderDevice, type DevicePose } from './devices/render3d'
 import { isDesktop, openLink, saveFile } from './native'
@@ -239,6 +240,19 @@ const list = async <T,>(file: string): Promise<T[]> => {
 
 export const loadCustom = async () => (await list<Template>('templates.json')).filter((t) => t.targets) // drop the older single-platform format
 export const saveCustom = (all: Template[]) => write('templates.json', all)
+
+/** Saved templates, kept in sync with storage (a file on the desktop, localStorage in the browser). */
+export function useCustomTemplates() {
+  const [custom, setCustom] = useState<Template[]>([])
+  useEffect(() => {
+    loadCustom().then(setCustom)
+  }, [])
+  const store = (list: Template[]) => {
+    setCustom(list)
+    saveCustom(list)
+  }
+  return [custom, store] as const
+}
 
 // ---- sharing: a file for the repo's templates/ (themes/), proposed through GitHub's web editor ----
 

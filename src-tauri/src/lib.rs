@@ -66,7 +66,8 @@ fn reply(stream: &mut TcpStream, status: &str, body: &str) {
 }
 
 fn handle(app: &AppHandle, mut stream: TcpStream) {
-    let mut reader = BufReader::new(stream.try_clone().unwrap());
+    let Ok(read) = stream.try_clone() else { return };
+    let mut reader = BufReader::new(read);
     let mut line = String::new();
     if reader.read_line(&mut line).is_err() {
         return;

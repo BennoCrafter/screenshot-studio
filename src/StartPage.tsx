@@ -3,8 +3,8 @@ import { ask, openTextFile } from './native'
 import { deleteProject, listProjects, PROJECT_FILE, when, withFonts, type Project, type ProjectSummary } from './project'
 import { PLATFORMS, type Platform } from './render'
 import { loadStore, STORE, storeTemplate } from './openscrgen'
-import { BigPreview, StoreCard, TemplateCard, useCustomTemplates } from './TemplateGallery'
-import { ALL_PLATFORMS, BUILT_IN, toTarget, type Template } from './templates'
+import { BigPreview, StoreCard, TemplateCard } from './TemplateGallery'
+import { ALL_PLATFORMS, BUILT_IN, toTarget, useCustomTemplates, type Template } from './templates'
 
 type Tab = 'all' | Platform | 'store' // store: Open Screenshot Generator's templates
 

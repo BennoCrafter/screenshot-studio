@@ -90,7 +90,8 @@ export default function App() {
       }}
     />
   )}
-    <ImportDialog
+    {importing && <ImportDialog
+      key={importing.n}
       importing={importing}
       onOpen={async (p) => {
         // the open project first, so replacing that same project isn't undone by its save
@@ -98,6 +99,6 @@ export default function App() {
         await saveProject(p)
         show(p)
       }}
-    />
+    />}
   </>
 }

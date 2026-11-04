@@ -4,20 +4,15 @@ import { PLATFORMS } from './render'
 
 export interface Import { file: Project; existing?: ProjectSummary; n: number }
 
-/** Asks how to open a project file: under which name, and whether it replaces the copy already here (never by default). */
-export function ImportDialog({ importing, onOpen }: { importing: Import | null; onOpen: (p: Project) => void }) {
+/** Asks how to open a project file: under which name, and whether it replaces the copy already here (never by default).
+ *  Give it `key={importing.n}`, so each import starts fresh. */
+export function ImportDialog({ importing, onOpen }: { importing: Import; onOpen: (p: Project) => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
-  const [name, setName] = useState('')
-  const [replace, setReplace] = useState(false)
-  useEffect(() => {
-    if (!importing) return
-    setName(importing.file.name)
-    setReplace(false)
-    dialog.current!.showModal()
-  }, [importing?.n])
-  if (!importing) return <dialog ref={dialog} />
-
   const { file, existing } = importing
+  const [name, setName] = useState(file.name)
+  const [replace, setReplace] = useState(false)
+  useEffect(() => dialog.current!.showModal(), [])
+
   const slides = file.targets.reduce((n, t) => n + t.slides.length, 0)
   return (
     <dialog ref={dialog} className="lang-dialog import-dialog" onClick={(e) => e.target === dialog.current && dialog.current!.close()}>

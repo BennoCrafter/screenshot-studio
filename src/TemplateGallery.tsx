@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { loadImage, withFonts, type ProjectFont } from './project'
 import { drawSlide, layersOf, PLATFORMS, sizeOf, type Platform, type Slide } from './render'
-import { loadCustom, saveCustom, toTarget, type Template, type TargetData } from './templates'
+import { toTarget, type Template, type TargetData } from './templates'
 import macShot from './builtin/fillers/mac.jpg'
 
 // filler screenshots, so a preview's devices show an app instead of a blank screen (credits in builtin/fillers/)
@@ -83,16 +83,3 @@ export function StoreCard({ name, preview, selected, loading, onPick }: { name: 
 
 /** Every slide of a template's set, large. */
 export const BigPreview = ({ data, fonts }: { data: TargetData; fonts?: ProjectFont[] }) => <Preview data={data} fonts={fonts} count={data.slides.length} height={1200} />
-
-/** Saved templates, kept in sync with storage (a file on the desktop, localStorage in the browser). */
-export function useCustomTemplates() {
-  const [custom, setCustom] = useState<Template[]>([])
-  useEffect(() => {
-    loadCustom().then(setCustom)
-  }, [])
-  const store = (list: Template[]) => {
-    setCustom(list)
-    saveCustom(list)
-  }
-  return [custom, store] as const
-}

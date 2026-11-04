@@ -12,7 +12,7 @@ export function Board({ children, fitKey, onEmptyClick, reveal }: { children: Re
   const board = useRef<HTMLDivElement>(null)
   const [view, setView] = useState({ x: 0, y: 0, z: 1 })
   const [space, setSpace] = useState(false)
-  const pan = useRef<{ x: number; y: number; vx: number; vy: number; empty: boolean } | null>(null)
+  const [pan, setPan] = useState<{ x: number; y: number; vx: number; vy: number; empty: boolean } | null>(null)
 
   const zoomAt = (factor: number, cx?: number, cy?: number) =>
     setView((v) => {
@@ -81,7 +81,7 @@ export function Board({ children, fitKey, onEmptyClick, reveal }: { children: Re
   return (
     <div
       ref={stage}
-      className={space || pan.current ? 'stage panning' : 'stage'}
+      className={space || pan ? 'stage panning' : 'stage'}
       // capture phase, so Space/middle-drag pans even when starting over a slide
       onPointerDownCapture={(e) => {
         const empty = e.target === stage.current || e.target === board.current
@@ -90,17 +90,15 @@ export function Board({ children, fitKey, onEmptyClick, reveal }: { children: Re
         e.preventDefault()
         e.stopPropagation()
         e.currentTarget.setPointerCapture(e.pointerId)
-        pan.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, empty: empty && !space && e.button === 0 }
+        setPan({ x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, empty: empty && !space && e.button === 0 })
       }}
       onPointerMove={(e) => {
-        const p = pan.current
-        if (p) setView((v) => ({ ...v, x: p.vx + e.clientX - p.x, y: p.vy + e.clientY - p.y }))
+        if (pan) setView((v) => ({ ...v, x: pan.vx + e.clientX - pan.x, y: pan.vy + e.clientY - pan.y }))
       }}
       onPointerUp={(e) => {
-        const p = pan.current
-        pan.current = null
+        setPan(null)
         // a click (not a drag) on empty board clears the selection
-        if (p?.empty && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 4) onEmptyClick?.()
+        if (pan?.empty && Math.hypot(e.clientX - pan.x, e.clientY - pan.y) < 4) onEmptyClick?.()
       }}
       // macOS turns Ctrl-click into a right-click; keep the menu away while panning
       onContextMenu={(e) => e.ctrlKey && e.preventDefault()}

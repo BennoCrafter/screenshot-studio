@@ -144,3 +144,23 @@ export function newItem(kind: Item['kind'], image?: HTMLImageElement, pose?: Dev
   }
   return { ...base, w: 0.3, h: 0.3, color: '#ffffff' }
 }
+
+/** `parts` of slide `src` moved onto slide `to`, which sits (dx, dy) slide sizes away, keeping where they are on screen.
+ *  Text in every language goes along; the slide's own device replaces the one already there. Returns both slides. */
+export function transferred(src: Slide, to: Slide, parts: Part[], dx: number, dy: number): [Slide, Slide] {
+  // back to front, so they land on top of the other slide in the order they had
+  for (const part of layersOf(src).filter((p) => parts.includes(p))) {
+    to = { ...to, ...added(to, itemOf(src, part) ?? part) }
+    if (part === 'device') to = { ...to, device: src.device, image: src.image, outerImage: src.outerImage }
+    for (const [l, t] of Object.entries(src.translations ?? {})) {
+      const text = t.items?.[part]
+      if (text) to = { ...to, ...withText(to, part, text, l) }
+      const shots = t.shots?.[part]
+      if (shots) to = { ...to, ...withShot(to, part, { image: shots.image, outerImage: shots.outerImage }, l) }
+      if (shots?.shotId) to = { ...to, ...withShotId(to, part, shots.shotId, l) }
+    }
+    to = { ...to, ...moved(to, to, part, -dx, -dy) }
+    src = { ...src, ...removed(src, part) }
+  }
+  return [src, to]
+}

@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { MCP_URL } from './agent'
+import { claudeLinked, MCP_URL } from './agent'
 import { isDesktop, openLink, tell } from './native'
-import { effortName, MODES, modelOf, useModels, useStored } from './prefs'
+import { applyAppearance, applyMcpAccess, effortName, MODES, modelOf, storedAppearance, storedOthers, useModels, useStored, type Appearance } from './prefs'
 import type { Project } from './project'
 import { PLATFORMS, SIZES, type SizeName } from './render'
-
-type Appearance = 'system' | 'light' | 'dark'
 
 /** How to add the server to each MCP client; any client that speaks streamable HTTP works. */
 const CLIENTS = {
@@ -17,37 +15,8 @@ const CLIENTS = {
 }
 type Client = keyof typeof CLIENTS
 
-const stored = (): Appearance => {
-  try { return (localStorage.getItem('appearance') as Appearance) || 'system' } catch { return 'system' }
-}
-
-/** Light or dark regardless of the system; on the desktop the window glass follows too. */
-export async function applyAppearance(a = stored()) {
-  if (a === 'system') delete document.documentElement.dataset.theme
-  else document.documentElement.dataset.theme = a
-  if (isDesktop) await (await import('@tauri-apps/api/window')).getCurrentWindow().setTheme(a === 'system' ? null : a).catch(() => {})
-}
-
-/** Whether the terminal Claude Code has this app's MCP server added; null when unknown (the browser). */
-export async function claudeLinked() {
-  if (!isDesktop) return null
-  return (await import('@tauri-apps/api/core')).invoke<boolean>('claude_mcp_added').catch(() => null)
-}
-
 const GITHUB = 'https://github.com/BennoCrafter/screenshot-studio'
 const WEBSITE = 'https://bennowo.de/apps/screenshot-studio'
-
-
-/** Whether other MCP clients (terminal agents, editors) may use the app's MCP server (the app's own chat always can). */
-export const storedOthers = () => {
-  try { return localStorage.getItem('mcp-others') !== 'off' } catch { return true }
-}
-export async function applyMcpAccess(on = storedOthers()) {
-  if (isDesktop) await (await import('@tauri-apps/api/core')).invoke('mcp_allow_others', { on }).catch(() => {})
-}
-
-/** Opens Settings, at `section` if given (e.g. 'agent'). */
-export const openSettings = (section?: string) => window.dispatchEvent(new CustomEvent('open-settings', { detail: section }))
 
 type Update = import('@tauri-apps/plugin-updater').Update
 /** A newer release on GitHub, or null; throws when it can't tell. */
@@ -60,7 +29,7 @@ const installUpdate = async (u: Update) => {
 /** App settings, opened with ⌘, or from the app menu; with a project open, its export sizes too. */
 export function Settings({ project, setProject }: { project: Project | null; setProject: (fn: (p: Project) => Project) => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
-  const [appearance, setAppearance] = useState(stored)
+  const [appearance, setAppearance] = useState(storedAppearance)
   const [linked, setLinked] = useState<boolean | null>(null)
   const disconnect = async () => {
     await (await import('@tauri-apps/api/core')).invoke('claude_mcp_remove').catch((e) => tell(`Couldn't disconnect: ${e}`))

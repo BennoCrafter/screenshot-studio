@@ -1,10 +1,17 @@
 // The MCP server's brain. src-tauri forwards each JSON-RPC request from any MCP client
 // to here; the tools read and change the live project, so edits show up at once.
 
+import { isDesktop } from './native'
 import type { Project } from './project'
 import { text, TOOLS, type Json } from './tools'
 
 export const MCP_URL = 'http://127.0.0.1:7457/mcp'
+
+/** Whether the terminal Claude Code has this app's MCP server added; null when unknown (the browser). */
+export async function claudeLinked() {
+  if (!isDesktop) return null
+  return (await import('@tauri-apps/api/core')).invoke<boolean>('claude_mcp_added').catch(() => null)
+}
 
 /** What the app lets the agent do; App.tsx supplies it. */
 export interface Host {

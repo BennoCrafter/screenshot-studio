@@ -1,6 +1,7 @@
 // Preferences kept in localStorage and shared live between the parts of the app that show them.
 
 import { useEffect, useState } from 'react'
+import { isDesktop } from './native'
 
 // The agent's permission modes. Anything a mode doesn't allow on its own comes to the chat for Allow / Deny.
 export const MODES = { manual: 'Ask every time', acceptEdits: 'Auto-accept edits', auto: 'Auto', bypassPermissions: 'Allow everything' }
@@ -37,4 +38,34 @@ export function useStored<T extends string>(key: string, initial: T) {
     window.dispatchEvent(new CustomEvent('pref-changed', { detail: key }))
   }
   return [v, set] as const
+}
+
+/** Light, dark, or following the system; picked in Settings. */
+export type Appearance = 'system' | 'light' | 'dark'
+export const storedAppearance = (): Appearance => {
+  try { return (localStorage.getItem('appearance') as Appearance) || 'system' } catch { return 'system' }
+}
+
+/** Light or dark regardless of the system; on the desktop the window glass follows too. */
+export async function applyAppearance(a = storedAppearance()) {
+  if (a === 'system') delete document.documentElement.dataset.theme
+  else document.documentElement.dataset.theme = a
+  if (isDesktop) await (await import('@tauri-apps/api/window')).getCurrentWindow().setTheme(a === 'system' ? null : a).catch(() => {})
+}
+
+/** Whether other MCP clients (terminal agents, editors) may use the app's MCP server (the app's own chat always can). */
+export const storedOthers = () => {
+  try { return localStorage.getItem('mcp-others') !== 'off' } catch { return true }
+}
+export async function applyMcpAccess(on = storedOthers()) {
+  if (isDesktop) await (await import('@tauri-apps/api/core')).invoke('mcp_allow_others', { on }).catch(() => {})
+}
+
+/** Opens Settings, at `section` if given (e.g. 'agent'). */
+export const openSettings = (section?: string) => window.dispatchEvent(new CustomEvent('open-settings', { detail: section }))
+
+/** A panel width, remembered between launches. */
+export function useWidth(key: string, initial: number) {
+  const [w, setW] = useStored(key, String(initial))
+  return [Number(w) || initial, (px: number) => setW(String(px))] as const
 }
