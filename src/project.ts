@@ -70,7 +70,7 @@ export type WithImages<I> =Omit<Project, 'targets'> & {
     image: I
     outerImage: I
     items?: (Omit<Item, 'image' | 'outerImage'> & { image?: I; outerImage?: I })[] // images and devices have them
-    translations?: Record<string, Omit<Translation, 'shots'> & { shots?: Record<string, { image?: I; outerImage?: I }> }>
+    translations?: Record<string, Omit<Translation, 'shots'> & { shots?: Record<string, { image?: I; outerImage?: I; shotId?: string }> }>
   })[] })[]
 }
 
@@ -90,7 +90,7 @@ const mapImages = async <A, B>(p: WithImages<A>, fn: (a: A) => B | Promise<B>): 
       translations: s.translations && Object.fromEntries(await Promise.all(Object.entries(s.translations).map(async ([l, t]) => [l, {
         ...t,
         shots: t.shots && Object.fromEntries(await Promise.all(Object.entries(t.shots).map(async ([part, sh]) =>
-          [part, { image: await fn(sh.image ?? (null as A)), outerImage: await fn(sh.outerImage ?? (null as A)) }]))),
+          [part, { ...sh, image: await fn(sh.image ?? (null as A)), outerImage: await fn(sh.outerImage ?? (null as A)) }]))),
       }]))),
     }))),
   }))),

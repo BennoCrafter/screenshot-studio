@@ -11,8 +11,9 @@ type Stat = { size: number; mtime: Date | null; birthtime: Date | null }
 /** A file's identity: a copied-over file has a new size or dates even when it keeps the old name. */
 const signature = (i: Stat) => `${i.size}:${i.mtime?.getTime()}:${i.birthtime?.getTime()}`
 
-/** The folder's screenshots not applied yet, searching every folder inside it; of two with one name, the newer. */
-async function pending(p: Project) {
+/** The folder's screenshots not applied yet (or, given `id`, the one named so), searching every folder inside it;
+ *  of two with one name, the newer. */
+async function pending(p: Project, id?: string) {
   const { readDir, stat } = await fs()
   const { join } = await import('@tauri-apps/api/path')
   const latest = new Map<string, { path: string; id: string; sig: string; abs: string; at: number }>()
@@ -28,14 +29,15 @@ async function pending(p: Project) {
     }
   }
   await scan(p.shotFolder!, '')
-  return [...latest.values()].filter((f) => p.shotSeen?.[f.path] !== f.sig)
+  return [...latest.values()].filter((f) => (id ? f.id === id : p.shotSeen?.[f.path] !== f.sig))
 }
 
-/** Applies the folder's new screenshots now and whenever it changes; returns how to stop. `tell` gets a summary. */
+/** Applies the folder's new screenshots now and whenever it changes; returns how to stop, and how to fetch one
+ *  screenshot ID's file again (when an element gets that ID). `tell` gets a summary. */
 export function watchShotFolder(project: () => Project, update: (fn: (p: Project) => Project) => void, tell: (msg: string) => void) {
   let busy = Promise.resolve()
-  const sync = () => (busy = busy.then(async () => {
-    const files = await pending(project())
+  const sync = (id?: string) => (busy = busy.then(async () => {
+    const files = await pending(project(), id)
     if (!files.length) return
     const loaded = (await Promise.all(files.map((f) => fs()
       .then(({ readFile }) => readFile(f.abs))
@@ -56,7 +58,7 @@ export function watchShotFolder(project: () => Project, update: (fn: (p: Project
   }).catch((e) => console.error('screenshot folder sync failed', e)))
 
   sync()
-  const off = fs().then(({ watch }) => watch(project().shotFolder!, sync, { recursive: true, delayMs: 700 }))
+  const off = fs().then(({ watch }) => watch(project().shotFolder!, () => sync(), { recursive: true, delayMs: 700 }))
     .catch((e) => { console.error('screenshot folder not watched', e); return () => {} })
-  return () => void off.then((f) => f())
+  return { stop: () => void off.then((f) => f()), fetch: (id: string) => void sync(id) }
 }

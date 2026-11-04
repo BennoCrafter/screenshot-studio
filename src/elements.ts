@@ -2,7 +2,7 @@
 
 import type { DevicePose } from './devices/render3d'
 import { layersOf, PLATFORMS, type Item, type Part, type Slide } from './render'
-import type { Project } from './project'
+import { languagesOf, type Project } from './project'
 import { SHAPES } from './shapes'
 
 export const itemOf = (s: Slide, p: Part) => s.items?.find((i) => i.id === p)
@@ -31,22 +31,32 @@ export function withShot(s: Slide, p: Part, patch: Partial<Shot>, lang?: string)
   return { ...shared, translations: { ...s.translations, [lang]: { ...t, shots: { ...t.shots, [p]: { ...t.shots?.[p], ...shots } } } } }
 }
 
-/** The screenshot ID of an image or device element, if it has one. */
-export const shotIdOf = (s: Slide, p: Part) => (p === 'device' ? s.shotId : itemOf(s, p)?.shotId)
-export const withShotId = (s: Slide, p: Part, id: string): Partial<Slide> =>
-  p === 'device' ? { shotId: id || undefined } : withItem(s, p, (i) => ({ ...i, shotId: id || undefined }))
+/** The screenshot ID of an image or device element in `lang` (undefined for the primary language), if it has one. */
+export const shotIdOf = (s: Slide, p: Part, lang?: string) =>
+  lang ? s.translations?.[lang]?.shots?.[p]?.shotId : p === 'device' ? s.shotId : itemOf(s, p)?.shotId
+export function withShotId(s: Slide, p: Part, id: string, lang?: string): Partial<Slide> {
+  if (!lang) return p === 'device' ? { shotId: id || undefined } : withItem(s, p, (i) => ({ ...i, shotId: id || undefined }))
+  const t = s.translations?.[lang] ?? {}
+  return { translations: { ...s.translations, [lang]: { ...t, shots: { ...t.shots, [p]: { ...t.shots?.[p], shotId: id || undefined } } } } }
+}
 
-/** Every element whose screenshot ID is in `images` gets that screenshot (in `lang`, if given); `done` says where. */
-export function replaceShots(p: Project, images: Map<string, HTMLImageElement>, lang?: string) {
+/** Every screenshot ID in the project, with where it sits: each language's elements have their own. */
+export const shotIdsOf = (p: Project) => p.targets.flatMap((t) => t.slides.flatMap((s, i) => layersOf(s).flatMap((part) =>
+  [undefined, ...languagesOf(p).slice(1)].map((lang) => ({ id: shotIdOf(s, part, lang), t, s, i, part, lang })))))
+  .filter((x) => x.id)
+
+/** Every element whose screenshot ID (in any language) is in `images` gets that screenshot in that language; `done` says where. */
+export function replaceShots(p: Project, images: Map<string, HTMLImageElement>) {
   const done: string[] = []
+  const langs = [undefined, ...languagesOf(p).slice(1)]
   const targets = p.targets.map((t) => ({
     ...t,
-    slides: t.slides.map((s, i) => layersOf(s).reduce((s, part) => {
-      const image = images.get(shotIdOf(s, part) ?? '')
+    slides: t.slides.map((s, i) => layersOf(s).reduce((s, part) => langs.reduce((s, lang) => {
+      const image = images.get(shotIdOf(s, part, lang) ?? '')
       if (!image) return s
-      done.push(`${shotIdOf(s, part)} → ${PLATFORMS[t.platform].label} slide ${i + 1} (${partName(s, part)})`)
+      done.push(`${shotIdOf(s, part, lang)} → ${PLATFORMS[t.platform].label} slide ${i + 1} (${partName(s, part)}${lang ? `, ${lang}` : ''})`)
       return { ...s, ...withShot(s, part, { image }, lang) }
-    }, s)),
+    }, s), s)),
   }))
   return { project: { ...p, targets }, done }
 }

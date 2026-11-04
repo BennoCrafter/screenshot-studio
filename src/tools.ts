@@ -4,7 +4,7 @@ import { DEVICES, DEVICE_BY_ID } from './devices/models'
 import { deleteProject, fontFamily, fontFrom, LANGUAGES, languagesOf, listProjects, loadImage, openProject, projectToFile, type Project } from './project'
 import { typeOfName } from './native'
 import { FONTS, layersOf, localize, PLATFORMS, renderSlide, SIZES, sizeOf, THEMES, type Item, type Style, type Platform, type Slide, type Target } from './render'
-import { labelOf, replaceShots, shotIdOf } from './elements'
+import { labelOf, replaceShots, shotIdsOf } from './elements'
 import { SHAPES } from './shapes'
 import type { DevicePose } from './devices/render3d'
 import { ALL_PLATFORMS, BLANK, BUILT_IN, loadCustom, loadThemes, poseFor, saveTheme, toTarget } from './templates'
@@ -57,7 +57,7 @@ const describe = (p: Project) => ({
       ...s, image: !!s.image, outerImage: !!s.outerImage,
       translations: s.translations && Object.fromEntries(Object.entries(s.translations).map(([l, t]) => [l, {
         ...t,
-        shots: t.shots && Object.fromEntries(Object.entries(t.shots).map(([p, sh]) => [p, { image: !!sh.image, outerImage: !!sh.outerImage }])),
+        shots: t.shots && Object.fromEntries(Object.entries(t.shots).map(([p, sh]) => [p, { ...sh, image: !!sh.image, outerImage: !!sh.outerImage }])),
       }])),
       items: s.items?.map((i) => (i.kind === 'image' || i.kind === 'device' ? { ...i, image: !!i.image, outerImage: !!i.outerImage } : i)),
     })),
@@ -106,7 +106,8 @@ async function slideFrom(platform: Platform, s: Json, was: Slide | undefined): P
     const given = (t.shots ?? {}) as Record<string, Json>
     const parts = new Set([...Object.keys(kept), ...Object.keys(given)])
     const shots = Object.fromEntries(await Promise.all([...parts].map(async (p) =>
-      [p, { image: await imageOr(given[p]?.image, kept[p]?.image), outerImage: await imageOr(given[p]?.outerImage, kept[p]?.outerImage) }])))
+      [p, { image: await imageOr(given[p]?.image, kept[p]?.image), outerImage: await imageOr(given[p]?.outerImage, kept[p]?.outerImage),
+        shotId: given[p]?.shotId !== undefined ? (given[p].shotId as string) || undefined : kept[p]?.shotId }])))
     return [l, { ...(t as object), shots }]
   }
   const item = async (i: Json) => {
@@ -198,7 +199,7 @@ export const TOOLS: { name: string; description: string; inputSchema: Json; run:
     description: `Replace the open project's name and targets with the given JSON, in the shape get_state returns. The app updates live and autosaves.
 languages: App Store language codes; the first is the primary. Each target: { platform, size, landscape? (true turns the size on its side; not mac), slides }. Each slide: { id?, bg1, bg2 (hex), angle (gradient degrees), textColor (for texts without their own color), layers? (what's on the slide, back to front: "device" and item ids; leaving one out deletes it; new items go in front), items? (texts and other objects: { id?, kind: "text" | "rect" | "ellipse" | "shape" | "image" | "device", shape?: (shapes, badges and icons: ${Object.keys(SHAPES).join(', ')}; colored by color; omit h to keep its proportions), x, y: centre as fractions of slide width/height, w, h: fractions of slide width (a text wraps at w), size?: text font size as a fraction of slide width (a headline is ~0.085, a subtitle ~0.042), font?: text CSS font family (default the system font; get_state lists the built-in ones under reference.fonts and the project's own under fonts; add_font adds one), weight?: text font weight (default 600; headlines 800, subtitles 500), opacity?: text, 0-1, text?, rotation?: degrees clockwise (not devices), color?, image?, device? (a device pose like the slide's; its size is a fraction of slide width), outerImage?, shotId? }), device, image?, outerImage?, shotId? }. shotId (images and devices; the slide's own device on the slide) names a screenshot for replace_screenshots. Headlines and subtitles are just text items.
 device: { model, finish, size (device width / slide width, ~0.3-1.2), yaw, pitch, roll (degrees), fold (degrees; 180 flat, 0 closed; foldables and Mac lid), x, y (offset of its centre from the slide's middle, as fraction of slide width/height), shadow?, reflections? (false turns off the drop shadow / glossy reflections) }. Omitted fields keep their value for an existing slide id, or get defaults.
-Item text is the primary language's; translations: { "<code>": { items?: { <text item id>: text }, shots? } } holds the other languages'. shots: { "device" or a device item's id: { image?, outerImage? } } gives that language its own screenshots (same values as image above; omitted ones keep what's there, and a language without one shows the primary language's). Everything else is shared by all languages.
+Item text is the primary language's; translations: { "<code>": { items?: { <text item id>: text }, shots? } } holds the other languages'. shots: { "device" or a device item's id: { image?, outerImage? } } gives that language its own screenshots (same values as image above; omitted ones keep what's there, and a language without one shows the primary language's); shotId there is that language's own screenshot ID. Everything else is shared by all languages.
 image / outerImage: true keeps the current screenshot, false removes it, a string is an absolute path or an http(s) URL of a PNG, JPEG, WebP or SVG to load. Slide order is array order; omit a slide to delete it, omit id to add one.`,
     inputSchema: {
       type: 'object',
@@ -213,12 +214,11 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
   },
   {
     name: 'replace_screenshots',
-    description: `Replace screenshots by screenshot ID (the shotId the user gave images and devices, on any platform and slide), for automations that re-shoot the app. Every element with a listed ID gets the new screenshot. Returns what was replaced and which IDs matched nothing.`,
+    description: `Replace screenshots by screenshot ID (the shotId the user gave images and devices, on any platform and slide), for automations that re-shoot the app. Every element with a listed ID gets the new screenshot; each language has its own IDs (translations[code].shots[part].shotId), so an ID also picks the language. Returns what was replaced and which IDs matched nothing.`,
     inputSchema: {
       type: 'object',
       properties: {
         screenshots: { type: 'object', additionalProperties: { type: 'string' }, description: '{ "<screenshot id>": "<absolute path or http(s) URL of a PNG, JPEG, WebP or SVG>" }' },
-        language: { type: 'string', description: 'Set these as this language\'s own screenshots; defaults to the primary language.' },
       },
       required: ['screenshots'],
     },
@@ -226,16 +226,13 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
       const p = current(host)
       const given = Object.entries((a.screenshots ?? {}) as Record<string, unknown>)
       if (!given.length || given.some(([, v]) => typeof v !== 'string')) throw new Error('screenshots must map screenshot IDs to file paths or URLs')
-      const langs = languagesOf(p)
-      if (a.language !== undefined && !langs.includes(a.language as string)) throw new Error(`The project's languages are ${langs.join(', ')}`)
-      const lang = a.language === langs[0] ? undefined : (a.language as string | undefined)
       // only load images that something uses, all before changing anything, so a bad path changes nothing
-      const used = new Set(p.targets.flatMap((t) => t.slides.flatMap((s) => layersOf(s).map((part) => shotIdOf(s, part)))))
+      const used = new Set(shotIdsOf(p).map((x) => x.id))
       const images = new Map(await Promise.all(given.filter(([id]) => used.has(id)).map(async ([id, path]) => [id, await imageFrom(path as string)] as const)))
-      const { project, done } = replaceShots(p, images, lang)
+      const { project, done } = replaceShots(p, images)
       host.setProject(project)
       const missing = given.map(([id]) => id).filter((id) => !images.has(id))
-      return text([`Replaced ${done.length} screenshot${done.length === 1 ? '' : 's'}${lang ? ` (${lang})` : ''}:`, ...done,
+      return text([`Replaced ${done.length} screenshot${done.length === 1 ? '' : 's'}:`, ...done,
         ...(missing.length ? [`No element has these IDs: ${missing.join(', ')}`] : [])].join('\n'))
     },
   },

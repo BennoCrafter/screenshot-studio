@@ -9,7 +9,7 @@ import { animate } from './motion'
 import { ask, FONT_FILES, IMAGE_FILES, isDesktop, openFiles, tell } from './native'
 import { fontFamily, fontFrom, LANGUAGES, languageName, languagesOf, loadImage, type Project, type ProjectFont } from './project'
 import { useStored } from './prefs'
-import { added, isDevice, isText, itemOf, kindOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotIdOf, shotOf, withShot, withShotId, withText, type Shot } from './elements'
+import { added, isDevice, isText, itemOf, kindOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotIdOf, shotIdsOf, shotOf, withShot, withShotId, withText, type Shot } from './elements'
 import { FONT, FONTS, layersOf, localize, PLATFORMS, sizeOf, type Item, type Part, type Platform, type Slide, type Style, type Target } from './render'
 import { SlideCanvas } from './SlideCanvas'
 import { SHAPES } from './shapes'
@@ -227,6 +227,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
           if (text) to = { ...to, ...withText(to, part, text, l) }
           const shots = t.shots?.[part]
           if (shots) to = { ...to, ...withShot(to, part, { image: shots.image, outerImage: shots.outerImage }, l) }
+          if (shots?.shotId) to = { ...to, ...withShotId(to, part, shots.shotId, l) }
         }
         to = { ...to, ...moved(to, to, part, -dx, -dy) }
         src = { ...src, ...removed(src, part) }
@@ -243,16 +244,18 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
   // screenshots dropped into the project's screenshot folder replace the ones with their ID; a note says what changed
   const [notice, setNotice] = useState('')
   const live = useRef({ project, setProject })
+  const fetchShot = useRef<(id: string) => void>(undefined)
   useEffect(() => { live.current = { project, setProject } })
   useEffect(() => {
     if (!isDesktop || !project.shotFolder) return
     let hide: ReturnType<typeof setTimeout>
-    const off = watchShotFolder(() => live.current.project, (fn) => live.current.setProject(fn), (msg) => {
+    const folder = watchShotFolder(() => live.current.project, (fn) => live.current.setProject(fn), (msg) => {
       setNotice(msg)
       clearTimeout(hide)
       hide = setTimeout(() => setNotice(''), 6000)
     })
-    return () => { off(); clearTimeout(hide) }
+    fetchShot.current = folder.fetch
+    return () => { folder.stop(); fetchShot.current = undefined; clearTimeout(hide) }
   }, [project.shotFolder])
 
   // Esc clears the selection, so the board is in focus with nothing picked; ⌘Z/⇧⌘Z undo and redo, ⌘C/⌘V/⌘D copy, paste and
@@ -585,10 +588,10 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
               update={(patch) => update(sel.id, patch)}
               pickedSlides={slides.filter((s) => selection.some((x) => x.slide === s.id))}
               updateSlides={(patch) => setSlides((all) => all.map((s) => (selection.some((x) => x.slide === s.id) ? { ...s, ...patch } : s)))}
+              fetchShot={(id) => fetchShot.current?.(id)}
               shotIdUser={(id, part) => {
-                for (const t of project.targets) for (const [i, s] of t.slides.entries()) for (const p of layersOf(s))
-                  if (shotIdOf(s, p) === id && !(s.id === sel.id && p === part)) return `${PLATFORMS[t.platform].label} slide ${i + 1} (${partName(s, p)})`
-                return null
+                const x = shotIdsOf(project).find((x) => x.id === id && !(x.s.id === sel.id && x.part === part && x.lang === textLang))
+                return x ? `${PLATFORMS[x.t.platform].label} slide ${x.i + 1} (${partName(x.s, x.part)}${x.lang ? `, ${languageName(x.lang)}` : ''})` : null
               }}
             />
           ) : (
@@ -618,7 +621,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
 }
 
 /** The picked element's settings (the last one, when several are picked), then the slide's own. */
-function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update, edit, likes, pickedSlides, updateSlides, shotIdUser }: {
+function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update, edit, likes, pickedSlides, updateSlides, shotIdUser, fetchShot }: {
   sel: Slide
   fonts: ProjectFont[] // the project's own
   addFont: (file: File) => Promise<ProjectFont>
@@ -637,6 +640,7 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
   updateSlides: (patch: Partial<Slide>) => void
   /** Where else in the project a screenshot ID is used, if anywhere: IDs are unique. */
   shotIdUser: (id: string, part: Part) => string | null
+  fetchShot: (id: string) => void // the screenshot folder's file for this ID, if any, applied now
 }) {
   const item = part ? itemOf(sel, part) : undefined
   const at = part ? positionOf(sel, part, size) : null
@@ -648,7 +652,7 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
     edit((s, p) => ({ items: s.items!.map((i) => (i.id === p ? { ...i, ...(typeof patch === 'function' ? patch(i) : patch) } : i)) }))
   // under the element's screenshot picker
   const idField = part && showIds === 'on' && (
-    <ShotIdField key={part} id={shotIdOf(sel, part) ?? ''} user={(id) => shotIdUser(id, part)} set={(id) => update(withShotId(sel, part, id))} />
+    <ShotIdField key={`${part} ${lang}`} id={shotIdOf(sel, part, lang) ?? ''} lang={lang} user={(id) => shotIdUser(id, part)} set={(id) => update(withShotId(sel, part, id, lang))} fetch={fetchShot} />
   )
   return (
     <Picks.Provider value={likes}>
@@ -892,13 +896,14 @@ function AngleSlider({ label, max, value, mixed, set }: { label: string; max: nu
 
 /** An element's screenshot ID:a file of that name in the screenshot folder replaces its screenshot. One taken
  * elsewhere in the project isn't kept, so each ID stays on one element. */
-function ShotIdField({ id, user, set }: { id: string; user: (id: string) => string | null; set: (id: string) => void }) {
+function ShotIdField({ id, lang, user, set, fetch }: { id: string; lang?: string; user: (id: string) => string | null; set: (id: string) => void; fetch: (id: string) => void }) {
   const [draft, setDraft] = useState(id)
+  const was = useRef(id) // the ID when the field got focus: leaving it with a new one fetches that screenshot
   const taken = draft ? user(draft) : null
   return (
     <label title="A file named after this ID in the project's screenshot folder (Settings › Project) replaces this screenshot">
-      Screenshot ID
-      <input value={draft} placeholder="e.g. home-screen" spellCheck={false} aria-invalid={!!taken} onChange={(e) => {
+      Screenshot ID{lang && ` (${languageName(lang)})`}
+      <input value={draft} onFocus={() => (was.current = draft)} onBlur={() => draft && draft !== was.current && !user(draft) && fetch(draft)} placeholder={lang ? `e.g. home-screen-${lang}` : 'e.g. home-screen'} spellCheck={false} aria-invalid={!!taken} onChange={(e) => {
         const v = e.target.value.replace(/\s/g, '-')
         setDraft(v)
         if (!v || !user(v)) set(v)
