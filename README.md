@@ -32,7 +32,7 @@
 
 ## MCP
 
-The desktop app runs an MCP server (streamable HTTP) at `http://127.0.0.1:7457/mcp` while it's open, so any MCP client can work on the live project: Claude Code, Codex, Gemini CLI, Cursor, VS Code and others. Its tools: `get_state`, `update_project`, `render_slide` (the agent sees the slide as it exports), `export_pngs`, `create_project`, `open_project`, `close_project` and `delete_project`.
+The desktop app runs an MCP server (streamable HTTP) at `http://127.0.0.1:7457/mcp` while it's open, so any MCP client can work on the live project: Claude Code, Codex, Gemini CLI, Cursor, VS Code and others. Its tools: `get_state`, `update_project`, `render_slide` (the agent sees the slide as it exports), `export_pngs`, `save_project_file`, `create_project`, `open_project`, `close_project` and `delete_project`.
 
 - **In the app**: open the **Agent** tab next to the Inspector in the editor sidebar. For now the panel runs [Claude Code](https://claude.com/claude-code) (`claude -p`) through your login shell, so that needs to be installed and logged in.
 - **From any MCP client**: connect it once (Settings shows these too), then ask it to work on your screenshots:
@@ -48,6 +48,18 @@ The desktop app runs an MCP server (streamable HTTP) at `http://127.0.0.1:7457/m
 
   ```json
   { "mcpServers": { "screenshot-studio": { "type": "http", "url": "http://127.0.0.1:7457/mcp" } } }
+  ```
+
+- **From the terminal**: the app itself is a command line for the same tools, for scripts and automations. It starts the app if it isn't running. On macOS, put it on your PATH once:
+
+  ```sh
+  ln -s "/Applications/Screenshot Studio.app/Contents/MacOS/app" /usr/local/bin/screenshot-studio
+
+  screenshot-studio tools                                  # list tools and their arguments
+  screenshot-studio render_slide platform=iphone index=0   # saves render_slide-1.png
+  screenshot-studio export TrackStar out iphone            # PNGs of a saved project by name; platform optional
+  screenshot-studio export TrackStar TrackStar.ssproj      # the project file
+  screenshot-studio replace_screenshots '{"screenshots":{"home":"/tmp/home.png"}}'
   ```
 
 The server only listens on localhost and refuses requests from web pages (any request with an `Origin` header). Its tools can read screenshots from, and export PNGs to, anything under your home folder, `/tmp` and `/Volumes`.

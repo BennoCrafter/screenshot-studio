@@ -1,7 +1,7 @@
 // The MCP tools: each reads or changes the live project through the Host.
 
 import { DEVICES, DEVICE_BY_ID } from './devices/models'
-import { deleteProject, fontFamily, fontFrom, LANGUAGES, languagesOf, listProjects, loadImage, type Project } from './project'
+import { deleteProject, fontFamily, fontFrom, LANGUAGES, languagesOf, listProjects, loadImage, openProject, projectToFile, type Project } from './project'
 import { typeOfName } from './native'
 import { FONTS, layersOf, localize, PLATFORMS, renderSlide, SIZES, sizeOf, THEMES, type Item, type Style, type Platform, type Slide, type Target } from './render'
 import { labelOf, replaceShots, shotIdOf } from './elements'
@@ -337,6 +337,17 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
         }
       }
       return text(written)
+    },
+  },
+  {
+    name: 'save_project_file',
+    description: 'Save a project as a .ssproj file (one JSON file with its screenshots and fonts inside), for backup or sharing. Saves the open project, or a saved one by id without opening it.',
+    inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Absolute file path, ending in .ssproj' }, id: { type: 'string', description: 'Project id from recentProjects; defaults to the open project.' } }, required: ['path'] },
+    run: async (host, a) => {
+      const p = !a.id || host.project()?.id === a.id ? current(host) : await openProject(a.id as string)
+      const { writeFile } = await import('@tauri-apps/plugin-fs')
+      await writeFile(a.path as string, new Uint8Array(await (await projectToFile(p)).arrayBuffer()))
+      return text(a.path)
     },
   },
   {
