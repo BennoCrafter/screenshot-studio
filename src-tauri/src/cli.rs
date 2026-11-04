@@ -9,13 +9,16 @@ use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
 const USAGE: &str = r#"Usage: screenshot-studio <command>
-  --version                               the app's version, and whether it's a dev build
-  tools                                   list the tools and their arguments
-  <tool> [key=value …]                    values are JSON when they parse, else strings
-  <tool> '{"…": …}'  or  <tool> -         arguments as one JSON object (- reads stdin)
-  export <project name> [dir] [platform]  PNGs of a saved project (default dir: here)
-  export <project name> <file.ssproj>     the project as a project file
-Text results go to stdout; images are saved as <tool>-<n>.png in the current folder."#;
+  projects                                         the saved projects
+  export <project> [--out <dir>] [--platform <p>]  PNGs of every slide and language (default: this folder)
+  save <project> <file.ssproj>                     the project as one file, screenshots inside
+  shots [<project>] [<id>=<file> …]                replace screenshots by ID; without IDs, apply the screenshot folders
+  render <project> <slide> [--platform <p>] [--language <code>] [--out <file.png>]
+                                                   a preview PNG of slide 1, 2, … (default: <project>-<slide>.png)
+  tools                                            the app's MCP tools, for call
+  call <tool> [key=value … | '{…}' | -]            run one MCP tool; values are JSON when they parse, - reads JSON from stdin
+  uninstall                                        remove this command from /usr/local/bin (asks for your password)
+  --version                                        the app's version, and whether it's a dev build"#;
 
 /// Whether the arguments are a command, not files the OS asks the app to open (or macOS's old -psn_ one).
 pub fn wanted(args: &[String]) -> bool {
@@ -51,12 +54,71 @@ fn run(args: &[String]) -> Result<(), String> {
         println!("screenshot-studio {}{}", env!("CARGO_PKG_VERSION"), if cfg!(debug_assertions) { " (dev)" } else { "" });
         return Ok(());
     }
+    if command == "uninstall" {
+        cli_unlink()?;
+        println!("Removed {LINK}");
+        return Ok(());
+    }
+    let usage = |u: &str| Err(format!("Usage: screenshot-studio {u}"));
+    if !matches!(command, "projects" | "export" | "save" | "shots" | "render" | "tools" | "call") {
+        return Err(format!("Unknown command {command}. Run screenshot-studio help for the commands."));
+    }
     connect()?;
     match command {
+        "projects" => {
+            let state: Value = serde_json::from_str(call("get_state", json!({}))?[0]["text"].as_str().unwrap_or("")).map_err(|e| e.to_string())?;
+            for p in state["recentProjects"].as_array().into_iter().flatten() {
+                let platforms: Vec<&str> = p["platforms"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+                println!("{}  {}", p["name"].as_str().unwrap_or(""), paint("2", &platforms.join(", "), false));
+            }
+            Ok(())
+        }
+        "export" => {
+            let (pos, mut a) = split(rest, &["out", "platform"])?;
+            let [project] = pos[..] else { return usage("export <project> [--out <dir>] [--platform <p>]") };
+            let dir = absolute(a.remove("out").as_ref().and_then(Value::as_str).unwrap_or("."))?;
+            a.insert("dir".into(), json!(dir));
+            a.insert("project".into(), json!(project));
+            show("export_pngs", a.into(), None)
+        }
+        "save" => match rest {
+            [project, file] => show("save_project_file", json!({ "project": project, "path": absolute(file)? }), None),
+            _ => usage("save <project> <file.ssproj>"),
+        },
+        "shots" => {
+            let (project, pairs) = match rest.first() {
+                Some(p) if !p.contains('=') => (Some(p), &rest[1..]),
+                _ => (None, rest),
+            };
+            let mut a = json!({});
+            if let Some(p) = project {
+                a["project"] = json!(p);
+            }
+            if !pairs.is_empty() {
+                let shots = pairs.iter()
+                    .map(|kv| match kv.split_once('=') {
+                        Some((id, file)) if !id.is_empty() => Ok((id.to_string(), json!(if file.starts_with("http") { file.into() } else { absolute(file)? }))),
+                        _ => Err(format!("Expected <id>=<file>, got {kv}")),
+                    })
+                    .collect::<Result<serde_json::Map<_, _>, String>>()?;
+                a["screenshots"] = shots.into();
+            }
+            show("update_screenshots", a, None)
+        }
+        "render" => {
+            let (pos, mut a) = split(rest, &["platform", "language", "out"])?;
+            let [project, slide] = pos[..] else { return usage("render <project> <slide> [--platform <p>] [--language <code>] [--out <file.png>]") };
+            let n: usize = slide.parse().ok().filter(|n| *n > 0).ok_or(format!("The slide is a number from 1, got {slide}"))?;
+            let out = a.remove("out").and_then(|v| v.as_str().map(String::from)).unwrap_or(format!("{project}-{n}.png"));
+            a.insert("project".into(), json!(project));
+            a.insert("index".into(), json!(n - 1));
+            show("render_slide", a.into(), Some(&out))
+        }
         "tools" => {
             let tools = rpc("tools/list", json!({}), None)?["tools"].as_array().cloned().unwrap_or_default();
+            let tools: Vec<&Value> = tools.iter().filter(|t| t["name"] != "approve").collect(); // the app's own, not for callers
             let width = tools.iter().filter_map(|t| t["name"].as_str()).map(str::len).max().unwrap_or(0);
-            for t in &tools {
+            for t in tools {
                 let schema = &t["inputSchema"];
                 let required = |p: &str| schema["required"].as_array().is_some_and(|r| r.iter().any(|x| x == p));
                 let props: Vec<String> = schema["properties"].as_object().into_iter().flatten()
@@ -69,27 +131,35 @@ fn run(args: &[String]) -> Result<(), String> {
                     println!("{:width$}  {}", "", paint("2", &props.join(" "), false));
                 }
             }
+            println!("\nRun one with: screenshot-studio call <tool> key=value …");
             Ok(())
         }
-        "export" => export(rest),
-        _ => tool(command, arguments(rest)?, false).map(|_| ()),
+        _ => match rest.split_first() {
+            Some((name, rest)) => show(name, arguments(rest)?, None),
+            None => usage("call <tool> [key=value … | '{…}' | -]"),
+        },
     }
 }
 
-/// Exports a saved project by name: its PNGs, or the project file.
-fn export(rest: &[String]) -> Result<(), String> {
-    let (Some(name), dir, platform) = (rest.first(), rest.get(1).map_or(".", String::as_str), rest.get(2)) else {
-        return Err("Usage: screenshot-studio export <project name> [dir] [platform]".into());
-    };
-    let dir = std::path::absolute(dir).map_err(|e| e.to_string())?;
-    if dir.extension().is_some_and(|e| e == "ssproj") {
-        return tool("save_project_file", json!({ "project": name, "path": dir.to_string_lossy() }), false).map(|_| ());
+/// The positional arguments, and the --name value options as strings (only the allowed names).
+fn split<'a>(rest: &'a [String], allowed: &[&str]) -> Result<(Vec<&'a str>, serde_json::Map<String, Value>), String> {
+    let (mut pos, mut opts) = (vec![], serde_json::Map::new());
+    let mut it = rest.iter();
+    while let Some(a) = it.next() {
+        match a.strip_prefix("--") {
+            Some(k) if allowed.contains(&k) => {
+                opts.insert(k.into(), json!(it.next().ok_or(format!("--{k} needs a value"))?));
+            }
+            Some(k) => return Err(format!("Unknown option --{k}; this command takes {}", allowed.iter().map(|o| format!("--{o}")).collect::<Vec<_>>().join(", "))),
+            None => pos.push(a.as_str()),
+        }
     }
-    let mut a = json!({ "project": name, "dir": dir.to_string_lossy() });
-    if let Some(p) = platform {
-        a["platform"] = json!(p);
-    }
-    tool("export_pngs", a, false).map(|_| ())
+    Ok((pos, opts))
+}
+
+/// The path made absolute against the current folder, since the app runs elsewhere.
+fn absolute(path: &str) -> Result<String, String> {
+    Ok(std::path::absolute(path).map_err(|e| e.to_string())?.to_string_lossy().into())
 }
 
 /// The tool's arguments: key=value pairs, one JSON object, or JSON on stdin.
@@ -112,18 +182,29 @@ fn arguments(rest: &[String]) -> Result<Value, String> {
     }
 }
 
-/// Calls a tool and prints its result (quiet: only errors and images); images go to <tool>-<n>.png.
-fn tool(name: &str, arguments: Value, quiet: bool) -> Result<Value, String> {
+/// Calls a tool; its content, or its error text as the error.
+fn call(name: &str, arguments: Value) -> Result<Vec<Value>, String> {
     let r = rpc("tools/call", json!({ "name": name, "arguments": arguments }), None)?;
-    let failed = r["isError"].as_bool().unwrap_or(false);
+    let content = r["content"].as_array().cloned().unwrap_or_default();
+    if r["isError"].as_bool().unwrap_or(false) {
+        let texts: Vec<&str> = content.iter().filter_map(|c| c["text"].as_str()).collect();
+        return Err(if texts.is_empty() { format!("{name} failed") } else { texts.join("\n") });
+    }
+    Ok(content)
+}
+
+/// Calls a tool and prints its text; images go to out, or <tool>-<n>.png.
+fn show(name: &str, arguments: Value, out: Option<&str>) -> Result<(), String> {
     let mut n = 0;
-    for c in r["content"].as_array().into_iter().flatten() {
+    for c in call(name, arguments)? {
         match c["type"].as_str() {
-            Some("text") if failed => eprintln!("{}", paint("31", c["text"].as_str().unwrap_or(""), true)),
-            Some("text") if !quiet => println!("{}", pretty(c["text"].as_str().unwrap_or(""))),
+            Some("text") => println!("{}", pretty(c["text"].as_str().unwrap_or(""))),
             Some("image") => {
                 n += 1;
-                let file = format!("{name}-{n}.png");
+                let file = match out {
+                    Some(f) if n == 1 => f.to_string(),
+                    _ => format!("{name}-{n}.png"),
+                };
                 let png = base64::engine::general_purpose::STANDARD.decode(c["data"].as_str().unwrap_or("")).map_err(|e| e.to_string())?;
                 std::fs::write(&file, png).map_err(|e| format!("{file}: {e}"))?;
                 println!("{}", paint("32", &file, false));
@@ -131,10 +212,7 @@ fn tool(name: &str, arguments: Value, quiet: bool) -> Result<Value, String> {
             _ => {}
         }
     }
-    if failed {
-        return Err(format!("{name} failed"));
-    }
-    Ok(r)
+    Ok(())
 }
 
 /// The text wrapped in an ANSI style when it goes to a terminal and NO_COLOR isn't set.
@@ -143,9 +221,10 @@ fn paint(style: &str, text: &str, stderr: bool) -> String {
     if tty && std::env::var_os("NO_COLOR").is_none() { format!("\x1b[{style}m{text}\x1b[0m") } else { text.into() }
 }
 
-/// JSON text indented for a terminal; anything else, and anything piped, as it came.
+/// A list of strings one per line, other JSON indented for a terminal; anything else, and other JSON piped, as it came.
 fn pretty(text: &str) -> String {
     match serde_json::from_str::<Value>(text) {
+        Ok(Value::Array(a)) if a.iter().all(Value::is_string) => a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n"),
         Ok(v) if std::io::stdout().is_terminal() => serde_json::to_string_pretty(&v).unwrap_or_else(|_| text.into()),
         _ => text.into(),
     }
@@ -216,9 +295,22 @@ pub fn cli_link() -> Result<(), String> {
         return Err("Installing the command line is macOS only".into());
     }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    as_admin(&format!(r#""mkdir -p /usr/local/bin && ln -sf " & quoted form of item 1 of argv & " {LINK}""#), &exe.to_string_lossy())
+}
+
+/// Removes the `screenshot-studio` link from /usr/local/bin, asking for an admin password (macOS).
+#[tauri::command]
+pub fn cli_unlink() -> Result<(), String> {
+    if !cfg!(target_os = "macos") {
+        return Err("The command line is macOS only".into());
+    }
+    as_admin(&format!(r#""rm -f {LINK}""#), "")
+}
+
+/// Runs an AppleScript shell `command` (an AppleScript string expression, `arg` as item 1 of argv) with administrator privileges.
+fn as_admin(command: &str, arg: &str) -> Result<(), String> {
     let o = std::process::Command::new("osascript")
-        .args(["-e", "on run argv", "-e", &format!(r#"do shell script "mkdir -p /usr/local/bin && ln -sf " & quoted form of item 1 of argv & " {LINK}" with administrator privileges"#), "-e", "end run"])
-        .arg(exe)
+        .args(["-e", "on run argv", "-e", &format!("do shell script {command} with administrator privileges"), "-e", "end run", arg])
         .output()
         .map_err(|e| e.to_string())?;
     if o.status.success() { Ok(()) } else { Err(String::from_utf8_lossy(&o.stderr).trim().into()) }

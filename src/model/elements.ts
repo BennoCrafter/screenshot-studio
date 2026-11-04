@@ -145,6 +145,10 @@ export function newItem(kind: Item['kind'], image?: HTMLImageElement, pose?: Dev
   return { ...base, w: 0.3, h: 0.3, color: '#ffffff' }
 }
 
+/** The slide's own device as an added device element on the same spot, with its screenshots. */
+export const deviceAsItem = (s: Slide): Item =>
+  ({ ...newItem('device', undefined, s.device), x: 0.5 + s.device.x, y: 0.5 + s.device.y, image: s.image, outerImage: s.outerImage })
+
 /** `parts` of slide `src` moved onto slide `to`, which sits (dx, dy) slide sizes away, keeping where they are on screen.
  *  Text in every language goes along; the slide's own device replaces the one already there. Returns both slides. */
 export function transferred(src: Slide, to: Slide, parts: Part[], dx: number, dy: number): [Slide, Slide] {

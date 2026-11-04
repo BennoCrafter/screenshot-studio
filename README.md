@@ -53,13 +53,14 @@ The desktop app runs an MCP server (streamable HTTP) at `http://127.0.0.1:7457/m
 - **From the terminal**: the app itself is a command line for the same tools, for scripts and automations. It starts the app if it isn't running. On macOS, click Install under Settings › General › Command line once (it links the app into `/usr/local/bin`):
 
   ```sh
-  screenshot-studio tools                                  # list tools and their arguments
-  screenshot-studio render_slide platform=iphone index=0   # saves render_slide-1.png
-  screenshot-studio export TrackStar out iphone            # PNGs of a saved project by name; platform optional
-  screenshot-studio export TrackStar TrackStar.ssproj      # the project file
-  screenshot-studio update_screenshots '{"screenshots":{"home":"/tmp/home.png"}}'   # by screenshot ID, in the open project
-  screenshot-studio update_screenshots project=TrackStar screenshots='{"home":"/tmp/home.png"}'   # in a saved project by name
-  screenshot-studio update_screenshots                     # without IDs: apply every project's screenshot folder; prints what changed
+  screenshot-studio projects                               # the saved projects
+  screenshot-studio export TrackStar --out out --platform iphone   # PNGs; both options optional
+  screenshot-studio save TrackStar TrackStar.ssproj        # the project file
+  screenshot-studio render TrackStar 1 --platform ipad     # a preview of slide 1, saved as TrackStar-1.png
+  screenshot-studio shots TrackStar home=shots/home.png    # replace screenshots by screenshot ID
+  screenshot-studio shots                                  # apply every project's screenshot folder; prints what changed
+  screenshot-studio call get_state                         # any MCP tool (screenshot-studio tools lists them)
+  screenshot-studio uninstall                              # remove it from /usr/local/bin again
   ```
 
 The server only listens on localhost and refuses requests from web pages (any request with an `Origin` header). Its tools can read screenshots from, and export PNGs to, anything under your home folder, `/tmp` and `/Volumes`.

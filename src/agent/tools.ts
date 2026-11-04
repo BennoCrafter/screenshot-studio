@@ -281,9 +281,9 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
   {
     name: 'render_slide',
     description: 'Look at a slide exactly as it exports, as a downscaled PNG. Use it to check your work.',
-    inputSchema: { type: 'object', properties: { platform: platformArg, language: languageArg, index: { type: 'integer', description: '0-based slide index' } }, required: ['index'] },
+    inputSchema: { type: 'object', properties: { platform: platformArg, language: languageArg, index: { type: 'integer', description: '0-based slide index' }, project: projectProp }, required: ['index'] },
     run: async (host, a) => {
-      const t = targetOf(current(host), a.platform as string)
+      const t = targetOf(await projectArg(host, a.project), a.platform as string)
       const s = slideAt(t, a.index as number)
       const [w, h] = sizeOf(t)
       return [{ type: 'image', data: await base64(await renderSlide(localize(s, a.language as string), sizeOf(t), Math.min(1, 1000 / Math.max(w, h)))), mimeType: 'image/png' }]

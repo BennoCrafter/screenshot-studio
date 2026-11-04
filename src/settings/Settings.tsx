@@ -17,6 +17,7 @@ type Client = keyof typeof CLIENTS
 
 const GITHUB = 'https://github.com/BennoCrafter/screenshot-studio'
 const WEBSITE = 'https://bennowo.de/apps/screenshot-studio'
+const FEEDBACK = `${GITHUB}/issues/new`
 
 type Update = import('@tauri-apps/plugin-updater').Update
 /** A newer release on GitHub, or null; throws when it can't tell. */
@@ -45,6 +46,10 @@ export function Settings({ project, setProject }: { project: Project | null; set
   const installCli = async () => {
     // -128: the password dialog was canceled
     await (await import('@tauri-apps/api/core')).invoke('cli_link').catch((e) => { if (!String(e).includes('-128')) tell(`Couldn't install the command line: ${e}`) })
+    checkCli()
+  }
+  const uninstallCli = async () => {
+    await (await import('@tauri-apps/api/core')).invoke('cli_unlink').catch((e) => { if (!String(e).includes('-128')) tell(`Couldn't uninstall the command line: ${e}`) })
     checkCli()
   }
   const [others, setOthers] = useState(storedOthers)
@@ -138,9 +143,9 @@ export function Settings({ project, setProject }: { project: Project | null; set
       { rows: [{ title: 'Appearance', hint: 'Light, dark, or follow the system.', keys: 'theme dark light mode color', ui: segmented(appearance, ['system', 'light', 'dark'] as const, pick) },
         { title: 'Screenshot IDs', hint: 'Shows an ID field on devices and images, so automations can replace their screenshots by ID: drop files into the project\'s screenshot folder (set under Project, with a project open) or use the update_screenshots MCP tool.', keys: 'screenshot id automation replace link ci',
           ui: <input type="checkbox" className="switch" aria-label="Screenshot IDs" checked={showIds === 'on'} onChange={(e) => setShowIds(e.target.checked ? 'on' : 'off')} /> },
-        ...(isDesktop && navigator.userAgent.includes('Mac') ? [{ title: 'Command line', hint: `Run the app's tools from a terminal or script, for example screenshot-studio tools. It starts the app if it isn't running. ${cliLinked ? 'Installed in /usr/local/bin.' : 'Installing links the app into /usr/local/bin and asks for your password.'}`, keys: 'cli command line terminal install path shell script screenshot-studio',
+        ...(isDesktop && navigator.userAgent.includes('Mac') ? [{ title: 'Command line', hint: `Export, render and update screenshots from a terminal or script; screenshot-studio help lists the commands. It starts the app if it isn't running. ${cliLinked ? 'Installed in /usr/local/bin.' : 'Installing links the app into /usr/local/bin and asks for your password.'}`, keys: 'cli command line terminal install path shell script screenshot-studio',
           ui: cliLinked
-            ? <span className="actions stacked"><button className="installed" disabled>✓ Installed</button><button className="link" onClick={installCli}>Reinstall</button></span>
+            ? <span className="actions stacked"><button className="installed" disabled>✓ Installed</button><button className="link" onClick={uninstallCli}>Uninstall</button></span>
             : <span className="actions"><button onClick={installCli}>Install</button></span> },
           { title: 'Or run this in a terminal', wide: true, keys: 'cli command line terminal sudo ln symlink', ui: (
             <div className="command">
@@ -245,6 +250,7 @@ export function Settings({ project, setProject }: { project: Project | null; set
           <span className="links">
             <a href={WEBSITE} onClick={(e) => { e.preventDefault(); openLink(WEBSITE) }}>Website</a>
             <a href={GITHUB} onClick={(e) => { e.preventDefault(); openLink(GITHUB) }}>GitHub</a>
+            <a href={FEEDBACK} onClick={(e) => { e.preventDefault(); openLink(FEEDBACK) }}>Feedback</a>
           </span>
         </footer>
       </aside>

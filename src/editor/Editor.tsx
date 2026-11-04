@@ -8,7 +8,7 @@ import { ask, isDesktop, typing } from '../lib/native'
 import { fontFrom, languageName, languagesOf, type Project } from '../model/project'
 import { openSettings, useStored, useWidth } from '../settings/prefs'
 import { Cheatsheet } from '../settings/Settings'
-import { added, isDevice, isText, itemOf, kindOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotIdOf, shotIdsOf, transferred, withShot, withText } from '../model/elements'
+import { added, deviceAsItem, isDevice, isText, itemOf, kindOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotIdOf, shotIdsOf, transferred, withShot, withText } from '../model/elements'
 import { clamp, layersOf, localize, PLATFORMS, sizeOf, type Item, type Part, type Platform, type Slide, type Style, type Target } from '../model/render'
 import { SlideCanvas } from './SlideCanvas'
 import { watchShotFolder } from '../model/shotFolder'
@@ -179,14 +179,14 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     })
     if (picked.length) keep(picked)
   }
-  // the slide's own device pasted onto a slide replaces its device and screenshots; anything else is pasted as a
-  // new object, nudged when it lands on the slide it came from
+  // the slide's own device pasted onto another slide replaces its device and screenshots; anything else (the own device
+  // on its own slide too) is pasted as a new object, nudged when it lands on the slide it came from
   const paste = () => {
     const targets = new Set(selection.map((x) => x.slide))
     if (!clipboard.length || !targets.size) return
     const picked: Sel[] = []
     setSlides((all) => all.map((s) => !targets.has(s.id) ? s : clipboard.reduce((s, { part, slide }) => {
-      const item = itemOf(slide, part)
+      const item = itemOf(slide, part) ?? (slide.id === s.id ? deviceAsItem(slide) : undefined)
       if (item) {
         const nudge = slide.id === s.id ? 0.03 : 0
         const copy = { ...item, id: crypto.randomUUID(), x: item.x + nudge, y: item.y + nudge }
