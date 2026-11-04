@@ -4,11 +4,12 @@
 
 use base64::Engine;
 use serde_json::{json, Value};
-use std::io::{Read, Write};
+use std::io::{IsTerminal, Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
 const USAGE: &str = r#"Usage: screenshot-studio <command>
+  --version                               the app's version, and whether it's a dev build
   tools                                   list the tools and their arguments
   <tool> [key=value …]                    values are JSON when they parse, else strings
   <tool> '{"…": …}'  or  <tool> -         arguments as one JSON object (- reads stdin)
@@ -34,7 +35,7 @@ pub fn main(args: Vec<String>) -> i32 {
     match run(&args) {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("{e}");
+            eprintln!("{} {e}", paint("1;31", "error:", true));
             1
         }
     }
@@ -43,20 +44,30 @@ pub fn main(args: Vec<String>) -> i32 {
 fn run(args: &[String]) -> Result<(), String> {
     let (command, rest) = (args[0].as_str(), &args[1..]);
     if matches!(command, "-h" | "--help" | "help") {
-        println!("{USAGE}");
+        println!("{}", USAGE.replacen("Usage:", &paint("1", "Usage:", false), 1));
+        return Ok(());
+    }
+    if matches!(command, "-v" | "-V" | "--version" | "version") {
+        println!("screenshot-studio {}{}", env!("CARGO_PKG_VERSION"), if cfg!(debug_assertions) { " (dev)" } else { "" });
         return Ok(());
     }
     connect()?;
     match command {
         "tools" => {
-            for t in rpc("tools/list", json!({}), None)?["tools"].as_array().into_iter().flatten() {
+            let tools = rpc("tools/list", json!({}), None)?["tools"].as_array().cloned().unwrap_or_default();
+            let width = tools.iter().filter_map(|t| t["name"].as_str()).map(str::len).max().unwrap_or(0);
+            for t in &tools {
                 let schema = &t["inputSchema"];
                 let required = |p: &str| schema["required"].as_array().is_some_and(|r| r.iter().any(|x| x == p));
                 let props: Vec<String> = schema["properties"].as_object().into_iter().flatten()
                     .map(|(p, _)| if required(p) { p.clone() } else { format!("[{p}]") })
                     .collect();
                 let description = t["description"].as_str().unwrap_or("").lines().next().unwrap_or("");
-                println!("{} {}\n  {description}", t["name"].as_str().unwrap_or(""), props.join(" "));
+                let name = format!("{:width$}", t["name"].as_str().unwrap_or(""));
+                println!("{}  {description}", paint("1;36", &name, false));
+                if !props.is_empty() {
+                    println!("{:width$}  {}", "", paint("2", &props.join(" "), false));
+                }
             }
             Ok(())
         }
@@ -129,14 +140,14 @@ fn tool(name: &str, arguments: Value, quiet: bool) -> Result<Value, String> {
     let mut n = 0;
     for c in r["content"].as_array().into_iter().flatten() {
         match c["type"].as_str() {
-            Some("text") if failed => eprintln!("{}", c["text"].as_str().unwrap_or("")),
-            Some("text") if !quiet => println!("{}", c["text"].as_str().unwrap_or("")),
+            Some("text") if failed => eprintln!("{}", paint("31", c["text"].as_str().unwrap_or(""), true)),
+            Some("text") if !quiet => println!("{}", pretty(c["text"].as_str().unwrap_or(""))),
             Some("image") => {
                 n += 1;
                 let file = format!("{name}-{n}.png");
                 let png = base64::engine::general_purpose::STANDARD.decode(c["data"].as_str().unwrap_or("")).map_err(|e| e.to_string())?;
                 std::fs::write(&file, png).map_err(|e| format!("{file}: {e}"))?;
-                println!("{file}");
+                println!("{}", paint("32", &file, false));
             }
             _ => {}
         }
@@ -145,6 +156,20 @@ fn tool(name: &str, arguments: Value, quiet: bool) -> Result<Value, String> {
         return Err(format!("{name} failed"));
     }
     Ok(r)
+}
+
+/// The text wrapped in an ANSI style when it goes to a terminal and NO_COLOR isn't set.
+fn paint(style: &str, text: &str, stderr: bool) -> String {
+    let tty = if stderr { std::io::stderr().is_terminal() } else { std::io::stdout().is_terminal() };
+    if tty && std::env::var_os("NO_COLOR").is_none() { format!("\x1b[{style}m{text}\x1b[0m") } else { text.into() }
+}
+
+/// JSON text indented for a terminal; anything else, and anything piped, as it came.
+fn pretty(text: &str) -> String {
+    match serde_json::from_str::<Value>(text) {
+        Ok(v) if std::io::stdout().is_terminal() => serde_json::to_string_pretty(&v).unwrap_or_else(|_| text.into()),
+        _ => text.into(),
+    }
 }
 
 /// One JSON-RPC request to the app's MCP server; its result.
@@ -170,7 +195,7 @@ fn rpc(method: &str, params: Value, timeout: Option<Duration>) -> Result<Value, 
 /// Starts the app if nothing listens on its port, then waits until its webview answers.
 fn connect() -> Result<(), String> {
     if TcpStream::connect(("127.0.0.1", crate::MCP_PORT)).is_err() {
-        eprintln!("Starting Screenshot Studio…");
+        eprintln!("{}", paint("2", "Starting Screenshot Studio…", true));
         let mut c = std::process::Command::new(std::env::current_exe().map_err(|e| e.to_string())?);
         c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
         #[cfg(unix)]
