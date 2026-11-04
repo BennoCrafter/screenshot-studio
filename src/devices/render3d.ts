@@ -255,12 +255,17 @@ function textureFor(img: HTMLImageElement | null) {
   return t
 }
 
-// Cover-fit: crop the texture to the screen's aspect.
-function cover(t: THREE.Texture, screenAspect: number) {
+// Cover-fit: crop the texture to the screen's aspect. A landscape shot on a portrait screen (or the other way)
+// is turned a quarter, upright for a device spun to landscape: clockwise for a negative roll, else counterclockwise.
+function cover(t: THREE.Texture, screenAspect: number, roll = 0, turns = true) {
   const img = t.image as { width: number; height: number }
   const a = img.width / img.height
-  t.repeat.set(Math.min(1, screenAspect / a), Math.min(1, a / screenAspect))
-  t.offset.set((1 - t.repeat.x) / 2, (1 - t.repeat.y) / 2)
+  const turn = turns && a > 1 !== screenAspect > 1
+  const s = turn ? 1 / screenAspect : screenAspect
+  t.repeat.set(Math.min(1, s / a), Math.min(1, a / s))
+  t.center.set(0.5, 0.5)
+  t.offset.set(0, 0)
+  t.rotation = turn ? (roll > 0 ? -PI / 2 : PI / 2) : 0
 }
 
 const MAX_PX = 4096
@@ -290,12 +295,12 @@ export function renderDevice(
     g.clearcoat = pose.reflections === false ? 0 : g.userData.clearcoat
   }
   const tex = textureFor(image)
-  cover(tex, m.screen.width / m.screen.height)
+  cover(tex, m.screen.width / m.screen.height, pose.roll, !m.laptop && !!image)
   b.screen.map = tex
   b.screen.needsUpdate = true
   if (m.outer) {
     const t = textureFor(outerImage)
-    if (t !== tex) cover(t, m.outer.width / m.outer.height) // ponytail: same image on both screens shares one crop
+    if (t !== tex) cover(t, m.outer.width / m.outer.height, pose.roll, !!outerImage) // ponytail: same image on both screens shares one crop
     b.outerScreen.map = t
     b.outerScreen.needsUpdate = true
   }
