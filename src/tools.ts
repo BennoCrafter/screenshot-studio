@@ -1,7 +1,8 @@
 // The MCP tools: each reads or changes the live project through the Host.
 
 import { DEVICES, DEVICE_BY_ID } from './devices/models'
-import { deleteProject, fontFamily, fontFrom, LANGUAGES, languagesOf, listProjects, loadImage, openProject, projectToFile, type Project } from './project'
+import { deleteProject, fontFamily, fontFrom, LANGUAGES, languagesOf, listProjects, loadImage, openProject, projectToFile, saveProject, type Project } from './project'
+import { syncShotFolder, takeReport } from './shotFolder'
 import { typeOfName } from './native'
 import { FONTS, layersOf, localize, PLATFORMS, renderSlide, SIZES, sizeOf, THEMES, type Item, type Style, type Platform, type Slide, type Target } from './render'
 import { labelOf, replaceShots, shotIdsOf } from './elements'
@@ -234,6 +235,29 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
       const missing = given.map(([id]) => id).filter((id) => !images.has(id))
       return text([`Replaced ${done.length} screenshot${done.length === 1 ? '' : 's'}:`, ...done,
         ...(missing.length ? [`No element has these IDs: ${missing.join(', ')}`] : [])].join('\n'))
+    },
+  },
+  {
+    name: 'update_screenshots',
+    description: `Apply the new and changed files in every project's screenshot folder (desktop; set in Settings › Project) now, saving projects that aren't open, and report what changed since the last call: also what the open project picked up from its folder by itself. Lists files no element has the screenshot ID of, too.`,
+    inputSchema: { type: 'object', properties: {} },
+    run: async (host) => {
+      const out: string[] = []
+      // shortcut: opens every project to read its screenshot folder; keep the folder in the summary if that gets slow
+      for (const { id, name } of await listProjects()) {
+        try {
+          const open = host.project()?.id === id
+          let p = open ? current(host) : await openProject(id)
+          if (!p.shotFolder) continue
+          const { done, unused } = await syncShotFolder(() => p, (fn) => (p = fn(p)))
+          if (done.length) await (open ? host.setProject(p) : saveProject(p))
+          const lines = [...takeReport(id), ...(unused.length ? [`No element has the screenshot ID of ${unused.join(', ')}`] : [])]
+          if (lines.length) out.push(`${name}:`, ...lines.map((l) => `  ${l}`))
+        } catch (e) {
+          out.push(`${name}: ${(e as Error).message ?? e}`)
+        }
+      }
+      return text(out.length ? out.join('\n') : 'Nothing changed.')
     },
   },
   {
