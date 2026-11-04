@@ -23,7 +23,7 @@ export interface Disc {
 /** A hardware button. Like the original's drawings: seen from the front. */
 interface Button {
   side: 'left' | 'right' | 'top'
-  /** From the top edge to the button's centre; on the top edge, from the left edge. */
+  /** From the top edge to the button's center; on the top edge, from the left edge. */
   center: number
   length: number
   /** Across the edge, front to back. */
@@ -42,11 +42,11 @@ export interface DeviceModel {
   depth: number
   radius: number
   /**
-   * Display, centred on the front (shifted up by `y` when the bezel is uneven).
+   * Display, centered on the front (shifted up by `y` when the bezel is uneven).
    * Its pixel aspect is what screenshots get cover-fitted to.
    */
   screen: { width: number; height: number; radius: number; y?: number }
-  /** Dynamic Island (or a Mac's notch): size and its centre's distance from the top edge. */
+  /** Dynamic Island (or a Mac's notch): size and its center's distance from the top edge. */
   island?: { width: number; height: number; center: number; notch?: boolean }
   /** Camera plateau on the back, back-view coords. */
   bump?: { x0: number; y0: number; x1: number; y1: number; radius: number; height: number }
@@ -66,8 +66,8 @@ export interface DeviceModel {
   laptop?: { depth: number; thickness: number }
   /**
    * Foldables: the outer display on the left half's back, which faces you when closed
-   * (hinge on the left). `hinge` is its distance from the hinge line; it is centred top to bottom.
-   * Camera hole: diameter, centre in from the free edge and down from the top.
+   * (hinge on the left). `hinge` is its distance from the hinge line; it is centered top to bottom.
+   * Camera hole: diameter, center in from the free edge and down from the top.
    */
   outer?: {
     width: number; height: number; hinge: number; radius: number; hingeRadius: number

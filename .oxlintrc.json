@@ -3,6 +3,7 @@
   "plugins": ["react", "typescript", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
+    "no-unused-vars": ["warn", { "ignoreRestSiblings": true, "argsIgnorePattern": "^_" }],
     "react/only-export-components": ["warn", { "allowConstantExport": true }]
   }
 }

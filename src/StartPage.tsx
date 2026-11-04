@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ask, openTextFile } from './native'
-import { deleteProject, listProjects, PROJECT_FILE, withFonts, type Project, type ProjectSummary } from './project'
+import { deleteProject, listProjects, PROJECT_FILE, when, withFonts, type Project, type ProjectSummary } from './project'
 import { PLATFORMS, type Platform } from './render'
 import { loadStore, STORE, storeTemplate } from './openscrgen'
 import { BigPreview, StoreCard, TemplateCard, useCustomTemplates } from './TemplateGallery'
 import { ALL_PLATFORMS, BUILT_IN, toTarget, type Template } from './templates'
 
 type Tab = 'all' | Platform | 'store' // store: Open Screenshot Generator's templates
-
-const when = (t: number) =>
-  new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(t)
 
 /** Welcome window (new project, recent projects) and the new-project template chooser. */
 export function StartPage({ onOpen, onCreate, onImport }: { onOpen: (id: string) => void; onCreate: (p: Project) => void; onImport: (text: string) => void }) {

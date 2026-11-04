@@ -4,10 +4,9 @@ import type { DevicePose } from './devices/render3d'
 import { loadImage } from './project'
 import { accepts, IMAGE_FILES } from './native'
 import { shotOf, type Shot } from './elements'
-import { drawSlide, layersOf, type Anchor, type Part, type Slide } from './render'
+import { clamp, drawSlide, layersOf, type Anchor, type Part, type Slide } from './render'
 
 const wrap180 = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 const snap = (v: number, on: boolean) => (on ? Math.round(v / 15) * 15 : Math.round(v))
 
 const FRONT: Partial<DevicePose> = { yaw: 0, pitch: 0, roll: 0 }
@@ -121,7 +120,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
     e.stopPropagation()
     begin(e, { grip, x: e.clientX, y: e.clientY, start: pose, part, deg: part ? anchor?.anchors[part]?.rotation : undefined, })
   }
-  // a lone element grows from its centre; a group from the centre of the box around it, spreading apart
+  // a lone element grows from its center; a group from the center of the box around it, spreading apart
   const resize = (parts: Part[]) => (e: React.PointerEvent) => {
     const b = bounds(parts)
     if (e.button !== 0 || !b) return
@@ -144,12 +143,12 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     const c = dev?.dev ?? { cx: 0, cy: 0, radius: 1 }
     const k = DEGREES_PER_RADIUS / (c.radius * (r.width / size[0])) // degrees per screen px
-    // measured from an element's centre, in screen px
+    // measured from an element's center, in screen px
     const ratio = (cx: number, cy: number) => {
       const c = { x: r.left + (cx / size[0]) * r.width, y: r.top + (cy / size[1]) * r.height }
       return Math.hypot(e.clientX - c.x, e.clientY - c.y) / Math.max(1, Math.hypot(d.x - c.x, d.y - c.y))
     }
-    // degrees the pointer has swept clockwise around an element's centre
+    // degrees the pointer has swept clockwise around an element's center
     const swept = (cx: number, cy: number) => {
       const o = { x: r.left + (cx / size[0]) * r.width, y: r.top + (cy / size[1]) * r.height }
       return (Math.atan2(e.clientY - o.y, e.clientX - o.x) - Math.atan2(d.y - o.y, d.x - o.x)) * (180 / Math.PI)
@@ -384,7 +383,7 @@ function TextEditor({ at, scale, size, text, onChange, onDone }: {
       suppressContentEditableWarning
       spellCheck={false}
       style={{
-        // the canvas draws text from the top of its em box; CSS centres it in the line
+        // the canvas draws text from the top of its em box; CSS centers it in the line
         left: `${((t.cx - t.wrap / 2) / size[0]) * 100}%`,
         top: `${((at.y - t.size * 0.075) / size[1]) * 100}%`,
         width: `${(t.wrap / size[0]) * 100}%`,
@@ -392,7 +391,7 @@ function TextEditor({ at, scale, size, text, onChange, onDone }: {
         color: t.color,
         opacity: t.alpha,
         rotate: at.rotation ? `${at.rotation}deg` : undefined,
-        transformOrigin: `50% ${(at.h / 2 + t.size * 0.075) * scale}px`, // the text's centre, as the canvas turns it
+        transformOrigin: `50% ${(at.h / 2 + t.size * 0.075) * scale}px`, // the text's center, as the canvas turns it
       }}
       onInput={(e) => onChange(e.currentTarget.innerText.replace(/\n$/, ''))}
       onBlur={onDone}

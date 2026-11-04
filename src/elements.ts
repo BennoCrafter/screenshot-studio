@@ -72,7 +72,7 @@ export function partName(s: Slide, p: Part) {
   return { rect: 'Rectangle', ellipse: 'Ellipse', image: 'Image', text: 'Text', device: 'Device' }[i?.kind ?? 'text']
 }
 
-/** `p`'s centre in slide px, from the top left. */
+/** `p`'s center in slide px, from the top left. */
 export function positionOf(s: Slide, p: Part, [w, h]: readonly [number, number]) {
   if (p === 'device') return { x: w / 2 + s.device.x * w, y: h / 2 + s.device.y * h }
   const i = itemOf(s, p)

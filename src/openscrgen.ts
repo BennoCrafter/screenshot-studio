@@ -100,7 +100,7 @@ export async function fromOpenScrGen(data: any): Promise<Data> {
       layers: [],
     }
     for (const e of board.elements as El[]) {
-      // the box is size × scale, rotated about its centre
+      // the box is size × scale, rotated about its center
       const bw = e.size.width * (e.scale ?? 1), bh = e.size.height * (e.scale ?? 1)
       const cx = (e.position.x + bw / 2) / W, cy = (e.position.y + bh / 2) / H
       const box = { id: e.id, x: cx, y: cy, w: bw / W, h: bh / W, rotation: e.rotation || undefined }

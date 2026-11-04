@@ -9,6 +9,9 @@ export const openLink = async (url: string) => {
   await (await import('@tauri-apps/api/core')).invoke('open_url', { url })
 }
 
+/** Whether a key press goes to a text field rather than to a shortcut. */
+export const typing = (t: EventTarget | null) => t instanceof HTMLElement && t.matches('input, textarea, select, [contenteditable]')
+
 type Filter = { name: string; extensions: string[] }
 
 /** The files each picker offers (and drops accept). */
@@ -46,7 +49,7 @@ function download(name: string, blob: Blob) {
 const bytes = async (blob: Blob) => new Uint8Array(await blob.arrayBuffer())
 
 /** Several files at once: the desktop app asks for a folder (names may hold subfolders, `de/iPhone/x.png`), the browser
- *  downloads each. Returns false if cancelled. */
+ *  downloads each. Returns false if canceled. */
 export async function saveFiles(files: { name: string; blob: Blob }[]) {
   if (!isDesktop) {
     files.forEach((f) => download(f.name, f.blob))
@@ -65,7 +68,7 @@ export async function saveFiles(files: { name: string; blob: Blob }[]) {
   return true
 }
 
-/** One file: a Save dialog on the desktop, a download in the browser. Returns the saved path (desktop), true (browser) or false if cancelled. */
+/** One file: a Save dialog on the desktop, a download in the browser. Returns the saved path (desktop), true (browser) or false if canceled. */
 export async function saveFile(name: string, blob: Blob, filter: Filter) {
   if (!isDesktop) {
     download(name, blob)
@@ -79,7 +82,7 @@ export async function saveFile(name: string, blob: Blob, filter: Filter) {
   return path
 }
 
-/** Pick files of `filter`'s types; none if cancelled. The desktop app uses its own Open dialog, which lists only those
+/** Pick files of `filter`'s types; none if canceled. The desktop app uses its own Open dialog, which lists only those
  *  (the webview's file input doesn't filter reliably). */
 export async function openFiles(filter: Filter, multiple = false): Promise<File[]> {
   if (isDesktop) {
@@ -100,5 +103,5 @@ export async function openFiles(filter: Filter, multiple = false): Promise<File[
   })
 }
 
-/** Pick and read a text file; null if cancelled. */
+/** Pick and read a text file; null if canceled. */
 export const openTextFile = async (filter: Filter) => (await openFiles(filter))[0]?.text() ?? null

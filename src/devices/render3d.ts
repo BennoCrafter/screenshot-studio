@@ -13,8 +13,8 @@ export interface DevicePose {
   roll?: number // degrees, spin in the picture plane
   pitch: number // degrees
   fold: number // degrees between the halves, 180 = flat, 0 = closed; foldables only
-  x: number // offset of the device centre, fraction of slide width
-  y: number // offset of the device centre, fraction of slide height
+  x: number // offset of the device center, fraction of slide width
+  y: number // offset of the device center, fraction of slide height
   size: number // device width as a fraction of the slide width
   shadow?: boolean // drop shadow on the slide; on unless false
   reflections?: boolean // glossy frame, back and glass; matte when false
@@ -320,7 +320,7 @@ export function renderDevice(
     .setFromEuler(new THREE.Euler((pose.pitch * PI) / 180, (pose.yaw * PI) / 180, ((pose.roll ?? 0) * PI) / 180, 'XYZ'))
     .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), follow))
 
-  // Camera far back for mild perspective, then an off-centre frustum fitted to every vertex.
+  // Camera far back for mild perspective, then an off-center frustum fitted to every vertex.
   const dist = Math.max(m.width, m.height) * 6
   camera.position.set(0, 0, dist)
   camera.lookAt(0, 0, 0)

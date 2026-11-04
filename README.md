@@ -24,8 +24,8 @@
 - **App Store sizes**: iPhone 6.9", 6.3", 6.5"; iPad 13", 11"; Mac 2880×1800 down to 1280×800.
 - **3D device frames** with pose, size and finish controls, including foldables with an outer display.
 - **Templates**: built-in designs, plus your own saved from any project (Export → Template), with or without its screenshots. Tick **Share with everyone** and the app opens a pull request adding it to `templates/` in this repo, using your GitHub CLI login.
-- **Languages**: add App Store localizations (German, English, Japanese and so on) to a project. Each language has its own headline, subtitle and texts, and can have its own screenshots (a language without one shows the primary language's). Everything else (devices, colours, layout) is shared, so a change shows up in every language.
-- **Export** PNGs of the slides and languages you pick. The desktop app writes them all to a folder you pick.
+- **Languages**: add App Store localizations (German, English, Japanese and so on) to a project. Each language has its own headline, subtitle and texts, and can have its own screenshots (a language without one shows the primary language's). Everything else (devices, colors, layout) is shared, so a change shows up in every language.
+- **Export** PNGs of the slides and languages you pick. The desktop app writes them all to a folder you pick. Or export one web page that shows them all, with platform and language filters and a click-to-enlarge view.
 - **Project files** (`.ssproj`): one JSON file with the screenshots inside, for backup or sharing.
 - **AI agent built in** (desktop): a chat panel that runs an AI agent connected to the app. It can see and change everything in the open project while you watch. It can also search the web for images (icons, logos, photos) and download them onto slides. Click any tool call in the chat to see what it sent and what came back.
 - **Images and SVGs**: PNG, JPEG, WebP and SVG work as screenshots and as images on slides. SVGs stay sharp at any export size.

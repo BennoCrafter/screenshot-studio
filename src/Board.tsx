@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
-const typing = (t: EventTarget | null) => t instanceof HTMLElement && t.matches('input, textarea, select, [contenteditable]')
+import { typing } from './native'
+import { clamp } from './render'
 
 /**
  * An infinite board: Ctrl/⌘ + scroll or a trackpad pinch zooms at the cursor, scroll pans (Shift + scroll sideways),

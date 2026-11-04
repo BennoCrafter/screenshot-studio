@@ -29,7 +29,7 @@ interface LangShot { image?: HTMLImageElement | null; outerImage?: HTMLImageElem
 /** An element on a slide: 'device' (the slide's own) or an item's id. The background sits behind them all. */
 export type Part = string
 
-/** An added object. Positions are its centre, as fractions of slide width and height; sizes are fractions of slide width. */
+/** An added object. Positions are its center, as fractions of slide width and height; sizes are fractions of slide width. */
 export interface Item {
   id: string
   kind: 'text' | 'rect' | 'ellipse' | 'shape' | 'image' | 'device'
@@ -51,6 +51,8 @@ export interface Item {
   device?: DevicePose // devices: placed by x, y; its size is a fraction of slide width
   shotId?: string // images and devices: screenshot ID, as on Slide
 }
+export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+
 export const layersOf = (s: Pick<Slide, 'layers'>): Part[] => s.layers ?? ['device']
 
 /** The slide with `lang`'s text and screenshots, falling back to the primary language's. */
@@ -146,9 +148,9 @@ export interface Anchor {
   y: number
   w: number
   h: number
-  rotation?: number // degrees clockwise about its centre
+  rotation?: number // degrees clockwise about its center
   text?: { cx: number; wrap: number; size: number; font: string; weight: number; alpha: number; color: string; lines: string[] }
-  dev?: { cx: number; cy: number; radius: number } // devices: centre and flat half-height, for the turn grips
+  dev?: { cx: number; cy: number; radius: number } // devices: center and flat half-height, for the turn grips
 }
 
 /** Draws the slide, leaving out `hide` (the text being edited on top of it). Returns each element's anchor, for the handles. */
@@ -163,7 +165,7 @@ export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h:
   ctx.fillStyle = g
   ctx.fillRect(0, 0, w, h)
 
-  /** A centred text block whose first line's top sits at `top`. */
+  /** A centered text block whose first line's top sits at `top`. */
   const setText = (text: string, cx: number, top: number, wrapW: number, size: number, style: { font: string; weight: number; alpha: number }, color: string): Anchor => {
     ctx.font = `${style.weight} ${size}px ${style.font}`
     const lines = text.trim() ? wrap(ctx, text, wrapW) : []
@@ -172,7 +174,7 @@ export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h:
     return { x: cx - lw / 2, y: top, w: lw, h: Math.max(1, lines.length) * size * 1.15, text: { cx, wrap: wrapW, size, color, lines, ...style } }
   }
 
-  // device: rendered in 3D, centred on the slide's middle plus its offset
+  // device: rendered in 3D, centered on the slide's middle plus its offset
   const dev = renderDevice(s.device, s.image, s.outerImage, w * s.device.size)
   const cx = w / 2 + s.device.x * w
   const cy = h / 2 + s.device.y * h
@@ -183,7 +185,7 @@ export function drawSlide(ctx: CanvasRenderingContext2D, s: Slide, w: number, h:
   for (const i of s.items ?? []) {
     if (i.kind === 'text') {
       const t = setText(i.text ?? '', i.x * w, 0, i.w * w, (i.size ?? 0.05) * w, { font: i.font ?? FONT, weight: i.weight ?? 600, alpha: i.opacity ?? 1 }, i.color ?? s.textColor)
-      anchors[i.id] = { ...t, y: i.y * h - t.h / 2, rotation: i.rotation } // centred on its spot, growing both ways
+      anchors[i.id] = { ...t, y: i.y * h - t.h / 2, rotation: i.rotation } // centered on its spot, growing both ways
     } else if (i.kind === 'device' && i.device) {
       const d = renderDevice(i.device, i.image ?? null, i.outerImage ?? null, w * i.device.size)
       const icx = i.x * w, icy = i.y * h

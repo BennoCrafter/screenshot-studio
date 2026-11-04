@@ -252,6 +252,10 @@ export function thumbnail(canvas: HTMLCanvasElement | null) {
 
 // ---- project files: one JSON file, screenshots inlined as data URLs ----------------
 
+/** A save time, for lists of projects. */
+export const when = (t: number) =>
+  new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(t)
+
 export const PROJECT_FILE = { name: 'Screenshot Studio project', extensions: ['ssproj', 'json'] } // json: Open Screenshot Generator projects (openscrgen.ts)
 
 export const toDataUrl = (blob: Blob) =>

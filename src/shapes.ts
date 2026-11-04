@@ -6,7 +6,7 @@ export interface Shape { label: string; group: 'Shapes' | 'Badges' | 'Icons'; vw
 
 const n = (v: number) => +v.toFixed(2)
 
-/** A five-pointed star centred on (cx, cy). */
+/** A five-pointed star centered on (cx, cy). */
 function star(cx: number, cy: number, r: number) {
   const pts = Array.from({ length: 10 }, (_, i) => {
     const a = -Math.PI / 2 + (i * Math.PI) / 5, k = i % 2 ? r * 0.45 : r

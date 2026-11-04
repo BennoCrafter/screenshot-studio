@@ -6,7 +6,7 @@ import { Chat } from './Chat'
 import { Themes } from './Themes'
 import { openSettings } from './Settings'
 import { animate } from './motion'
-import { ask, FONT_FILES, IMAGE_FILES, isDesktop, openFiles, tell } from './native'
+import { ask, FONT_FILES, IMAGE_FILES, isDesktop, openFiles, tell, typing } from './native'
 import { fontFamily, fontFrom, LANGUAGES, languageName, languagesOf, loadImage, type Project, type ProjectFont } from './project'
 import { useStored } from './prefs'
 import { added, isDevice, isText, itemOf, kindOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotIdOf, shotIdsOf, shotOf, withShot, withShotId, withText, type Shot } from './elements'
@@ -21,7 +21,6 @@ type Updater<T> = (fn: (v: T) => T) => void
 /** One element on one slide. */
 type Sel = { slide: string; part: Part }
 const same = (a: Sel, b: Sel) => a.slide === b.slide && a.part === b.part
-const typing = (t: EventTarget | null) => t instanceof HTMLElement && t.matches('input, textarea, select, [contenteditable]')
 
 // Copied elements, kept across projects; ponytail: in-app only, the system clipboard holds just typed text
 let clipboard: { part: Part; slide: Slide }[] = []

@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { languagesOf, languageName, type Project, type ProjectSummary } from './project'
+import { languagesOf, languageName, when, type Project, type ProjectSummary } from './project'
 import { PLATFORMS } from './render'
 
 export interface Import { file: Project; existing?: ProjectSummary; n: number }
-
-const when = (t: number) =>
-  new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(t)
 
 /** Asks how to open a project file: under which name, and whether it replaces the copy already here (never by default). */
 export function ImportDialog({ importing, onOpen }: { importing: Import | null; onOpen: (p: Project) => void }) {
