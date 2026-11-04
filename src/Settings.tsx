@@ -294,4 +294,4 @@ type Section = { id: string; label: string; icon: string; groups: Group[] }
 
 const SHORTCUTS = [['⌘ ,', 'Settings'], ['⌘ Z / ⇧⌘ Z', 'Undo / redo'], ['⌘ C / ⌘ V / ⌘ D', 'Copy / paste / duplicate'], ['⌘ A', 'Select all'], ['⌫', 'Delete selection'],
   ['⌘ + / ⌘ − / ⌘ 0', 'Zoom in / out / fit'], ['⌘ + scroll', 'Zoom at the pointer'], ['⇧ + scroll', 'Pan sideways'], ['Space-drag', 'Pan the board'], ['Esc', 'Clear selection'],
-  ['I', 'Screenshot ID badges']]
+  ['← / →', 'Previous / next slide'], ['L / ⇧ L', 'Next / previous language'], ['D / ⇧ D', 'Next / previous platform'], ['I', 'Screenshot ID badges']]

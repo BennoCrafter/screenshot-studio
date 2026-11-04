@@ -268,13 +268,14 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
   })) : undefined
 
   // Esc clears the selection, so the board is in focus with nothing picked; ⌘Z/⇧⌘Z undo and redo, ⌘C/⌘V/⌘D copy, paste and
-  // duplicate, ⌘A picks every element, Delete removes the picked ones; I toggles the screenshot badges
+  // duplicate, ⌘A picks every element, Delete removes the picked ones; I toggles the screenshot badges, L / D step through
+  // the languages / platforms (Shift goes back), ← / → pick the previous / next slide
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // fields apply as they change, so Enter just leaves the field; one in a form submits it instead
       if (e.key === 'Enter' && e.target instanceof HTMLInputElement && !e.target.form) return e.target.blur()
       if (typing(e.target) || document.querySelector('dialog[open]')) return
-      const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase()
+      const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase(), step = e.shiftKey ? -1 : 1
       if (e.key === 'Escape') { selectSlide(null); setMenu(null) }
       else if (mod && key === 'z') travel(e.shiftKey ? future : past, e.shiftKey ? past : future)
       else if (mod && key === 'y') travel(future, past)
@@ -285,6 +286,12 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       else if (e.key === 'Delete' || e.key === 'Backspace') remove()
       else if (mod || e.altKey) return
       else if (key === 'i') setBadges(badges === 'on' ? 'off' : 'on')
+      else if (key === 'l') animate(() => setLang(langs[(langs.indexOf(lang) + step + langs.length) % langs.length]))
+      else if (key === 'd') showTarget((project.targets.indexOf(target) + step + project.targets.length) % project.targets.length)
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const i = sel ? slides.indexOf(sel) + (e.key === 'ArrowLeft' ? -1 : 1) : 0
+        if (slides[i]) selectSlide(slides[i].id)
+      }
       else return
       e.preventDefault()
     }
