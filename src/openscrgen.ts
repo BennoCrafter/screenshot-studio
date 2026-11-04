@@ -27,7 +27,7 @@ const PHONE = ['somnia-sleep', 'kassa-money', 'pixara-ai', 'amoura-dating', 'scr
 const MAC = ['mac-flowdesk', 'mac-pulseform', 'mac-skyfit', 'mac-inkpress', 'mac-everglade', 'mac-festivo', 'mac-terra', 'mac-loopchat', 'mac-ledgerly',
   'mac-boardly', 'mac-postbox', 'mac-atelier']
 
-export interface StoreEntry { file: string; platform: Platform; preview: string }
+interface StoreEntry { file: string; platform: Platform; preview: string }
 const entries = (phone: string[], mac: string[]): StoreEntry[] =>
   [...phone.map((file) => ({ file, platform: 'iphone' as Platform })), ...mac.map((file) => ({ file, platform: 'mac' as Platform }))]
     .map((t) => ({ ...t, preview: `${SITE}/data/projects/previews/${t.file}.png` }))
@@ -61,7 +61,7 @@ export const storeTemplate = (file: string) => {
 }
 
 /** A converted project as a template. */
-export const asTemplate = (project: Data, description: string, author: string): Template => ({
+const asTemplate = (project: Data, description: string, author: string): Template => ({
   id: `openscrgen-${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'openscrgen'}`,
   name: project.name, description, author,
   targets: Object.fromEntries(project.targets.map(({ slides, ...t }) => [t.platform, { ...t, slides: slides.map(({ id: _, ...s }) => s) }])),

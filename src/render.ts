@@ -24,7 +24,7 @@ export interface Translation {
   shots?: Record<Part, LangShot> // screenshots by device part ('device' or an item id)
 }
 /** A device's screenshots in one language; a missing (or null) one shows the primary language's. */
-export interface LangShot { image?: HTMLImageElement | null; outerImage?: HTMLImageElement | null; shotId?: string } // shotId: this language's own screenshot ID
+interface LangShot { image?: HTMLImageElement | null; outerImage?: HTMLImageElement | null; shotId?: string } // shotId: this language's own screenshot ID
 
 /** An element on a slide: 'device' (the slide's own) or an item's id. The background sits behind them all. */
 export type Part = string

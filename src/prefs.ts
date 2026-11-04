@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 export const MODES = { manual: 'Ask every time', acceptEdits: 'Auto-accept edits', auto: 'Auto', bypassPermissions: 'Allow everything' }
 
 /** A model as the installed Claude Code lists it. */
-export interface AgentModel { value: string; displayName: string; description: string; supportedEffortLevels?: string[] }
+interface AgentModel { value: string; displayName: string; description: string; supportedEffortLevels?: string[] }
 let models: Promise<AgentModel[]> | undefined
 /** Claude Code's models, asked once per launch; empty until they arrive or if it isn't installed. */
 export function useModels() {

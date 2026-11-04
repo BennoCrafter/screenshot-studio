@@ -21,7 +21,7 @@ export interface Disc {
 }
 
 /** A hardware button. Like the original's drawings: seen from the front. */
-export interface Button {
+interface Button {
   side: 'left' | 'right' | 'top'
   /** From the top edge to the button's centre; on the top edge, from the left edge. */
   center: number

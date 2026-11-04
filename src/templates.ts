@@ -9,7 +9,7 @@ import builtinTemplates from './builtin/templates.json'
 import { FONT, PLATFORMS, SIZES, sizeOf, THEMES, wrap, type Item, type Platform, type SizeName, type Slide, type Style, type Target } from './render'
 
 type Shot = string | null // a screenshot or image as a data URL, in templates that keep them
-export type SlideData = Omit<Slide, 'id' | 'image' | 'outerImage' | 'translations' | 'items'> & {
+type SlideData = Omit<Slide, 'id' | 'image' | 'outerImage' | 'translations' | 'items'> & {
   image?: Shot
   outerImage?: Shot
   items?: (Omit<Item, 'image' | 'outerImage'> & { image?: Shot; outerImage?: Shot })[]

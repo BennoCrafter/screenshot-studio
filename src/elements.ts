@@ -8,7 +8,7 @@ import { SHAPES } from './shapes'
 export const itemOf = (s: Slide, p: Part) => s.items?.find((i) => i.id === p)
 export const isText = (s: Slide, p: Part) => itemOf(s, p)?.kind === 'text'
 /** The slide's texts, back to front. */
-export const textsOf = (s: Slide) => layersOf(s).map((p) => itemOf(s, p)).filter((i) => i?.kind === 'text') as Item[]
+const textsOf = (s: Slide) => layersOf(s).map((p) => itemOf(s, p)).filter((i) => i?.kind === 'text') as Item[]
 /** The slide's name: all its texts, back to front, on one line. */
 export const labelOf = (s: Slide) => textsOf(s).map((i) => i.text?.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' · ')
 

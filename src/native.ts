@@ -9,7 +9,7 @@ export const openLink = async (url: string) => {
   await (await import('@tauri-apps/api/core')).invoke('open_url', { url })
 }
 
-export type Filter = { name: string; extensions: string[] }
+type Filter = { name: string; extensions: string[] }
 
 /** The files each picker offers (and drops accept). */
 export const IMAGE_FILES: Filter = { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg'] }
