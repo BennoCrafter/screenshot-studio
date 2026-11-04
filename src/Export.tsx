@@ -4,6 +4,7 @@ import { languageName, languagesOf, PROJECT_FILE, projectToFile, type Project } 
 import { labelOf } from './elements'
 import { localize, PLATFORMS, renderSlide, sizeOf } from './render'
 import { useStored } from './prefs'
+import { websiteOf } from './website'
 import { loadCustom, saveCustom, shareTemplate, toData, type Template } from './templates'
 
 const THUMB_H = 180 // every platform's thumbnails the same height
@@ -11,62 +12,6 @@ const THUMB_H = 180 // every platform's thumbnails the same height
 /** How exported PNGs are sorted into subfolders. */
 const FOLDERS = { none: 'All in one folder', 'lang-device': 'Language › Device', 'device-lang': 'Device › Language' }
 type Folders = keyof typeof FOLDERS
-
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`)
-const dataUrl = (blob: Blob) => new Promise<string>((done) => {
-  const r = new FileReader()
-  r.onload = () => done(r.result as string)
-  r.readAsDataURL(blob)
-})
-
-/** One self-contained page showing every rendered slide, grouped by language and platform, with device and language
- *  filters and a click-to-enlarge view (arrow keys step through). */
-async function websiteOf(title: string, groups: { lang: string; platform: string; shots: { alt: string; blob: Blob }[] }[]) {
-  const langs = [...new Set(groups.map((g) => g.lang))]
-  const platforms = [...new Set(groups.map((g) => g.platform))]
-  const chips = (k: string, vs: string[]) => vs.length < 2 ? '' : `<div class="chips">${vs.map((v) => `<button data-k="${k}${esc(v)}" aria-pressed="true">${esc(v)}</button>`).join('')}</div>`
-  let body = ''
-  for (const g of groups) {
-    const imgs = await Promise.all(g.shots.map(async (s) => `<button><img src="${await dataUrl(s.blob)}" alt="${esc(s.alt)}" loading="lazy"></button>`))
-    body += `<section data-p="p${esc(g.platform)}" data-l="l${esc(g.lang)}"><h2>${esc(langs.length > 1 ? `${g.platform} · ${g.lang}` : g.platform)}</h2><div class="row">${imgs.join('')}</div></section>`
-  }
-  const filters = chips('p', platforms) + chips('l', langs)
-  return new Blob([`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
-:root{color-scheme:light dark;--bg:#f5f5f7;--fg:#1d1d1f;--muted:#6e6e73;--line:#d2d2d7}
-@media (prefers-color-scheme:dark){:root{--bg:#111113;--fg:#f5f5f7;--muted:#98989d;--line:#3a3a3c}}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
-header{padding:64px 24px 24px;text-align:center}h1{margin:0;font-size:clamp(32px,6vw,56px);letter-spacing:-.02em}
-nav{position:sticky;top:0;z-index:1;display:flex;flex-wrap:wrap;gap:8px 24px;justify-content:center;padding:12px 24px;background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
-.chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
-.chips button{font:inherit;font-size:14px;padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer}
-.chips button[aria-pressed=true]{background:var(--fg);border-color:var(--fg);color:var(--bg)}
-section{padding:24px 0 40px}h2{margin:0 24px 16px;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.row{display:flex;gap:20px;overflow-x:auto;padding:8px 24px 24px;scroll-snap-type:x mandatory}
-.row button{flex:none;padding:0;border:0;background:none;cursor:zoom-in;scroll-snap-align:center;border-radius:16px}
-.row img{display:block;height:min(70vh,640px);width:auto;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.18);transition:transform .2s}
-.row button:hover img{transform:translateY(-4px)}
-dialog{border:0;padding:0;background:none;max-width:none;max-height:none;cursor:zoom-out}
-dialog::backdrop{background:rgba(0,0,0,.85)}
-dialog img{display:block;max-width:94vw;max-height:94vh;border-radius:12px}
-</style></head><body><header><h1>${esc(title)}</h1></header>${filters && `<nav>${filters}</nav>`}${body}<dialog><img alt=""></dialog><script>
-const off = new Set(), d = document.querySelector('dialog'), big = d.querySelector('img')
-let cur
-for (const b of document.querySelectorAll('.chips button')) b.onclick = () => {
-  off.has(b.dataset.k) ? off.delete(b.dataset.k) : off.add(b.dataset.k)
-  b.setAttribute('aria-pressed', !off.has(b.dataset.k))
-  for (const s of document.querySelectorAll('section')) s.hidden = off.has(s.dataset.p) || off.has(s.dataset.l)
-}
-const show = (i) => { cur = i; big.src = i.src; big.alt = i.alt; if (!d.open) d.showModal() }
-for (const i of document.querySelectorAll('.row img')) i.parentElement.onclick = () => show(i)
-d.onclick = () => d.close()
-onkeydown = (e) => {
-  if (!d.open) return
-  const all = [...document.querySelectorAll('section:not([hidden]) .row img')]
-  const next = all[all.indexOf(cur) + (e.key === 'ArrowRight') - (e.key === 'ArrowLeft')]
-  if (next) show(next)
-}
-</script></body></html>`], { type: 'text/html' })
-}
 
 /** The Export button and its dialog: PNGs of the picked slides, platforms and languages, the project as a template, or as a .ssproj file. */
 export function Export({ project }: { project: Project }) {
