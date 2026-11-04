@@ -245,21 +245,30 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
   const [notice, setNotice] = useState('')
   const live = useRef({ project, setProject })
   const fetchShot = useRef<(id: string) => void>(undefined)
+  const [folderIds, setFolderIds] = useState(new Set<string>()) // screenshot IDs with a file in the folder
   useEffect(() => { live.current = { project, setProject } })
   useEffect(() => {
+    setFolderIds(new Set())
     if (!isDesktop || !project.shotFolder) return
     let hide: ReturnType<typeof setTimeout>
     const folder = watchShotFolder(() => live.current.project, (fn) => live.current.setProject(fn), (msg) => {
       setNotice(msg)
       clearTimeout(hide)
       hide = setTimeout(() => setNotice(''), 6000)
-    })
+    }, setFolderIds)
     fetchShot.current = folder.fetch
     return () => { folder.stop(); fetchShot.current = undefined; clearTimeout(hide) }
   }, [project.shotFolder])
+  // badges on the device frames: green when their screenshot ID has a file in the screenshot folder
+  const [badges, setBadges] = useStored<'on' | 'off'>('shot-badges', 'off')
+  const badgesOf = (s: Slide) => badges === 'on' ? Object.fromEntries(layersOf(s).filter((p) => isDevice(s, p)).map((p) => {
+    const id = shotIdOf(s, p, textLang) ?? shotIdOf(s, p) // a language without its own ID shows the primary language's screenshot
+    return [p, { ok: !!id && folderIds.has(id), text: id ?? 'No ID',
+      title: !id ? 'No screenshot ID' : !project.shotFolder ? 'No screenshot folder (Settings › Project)' : folderIds.has(id) ? `${id} is in the screenshot folder` : `No file named ${id} in the screenshot folder` }]
+  })) : undefined
 
   // Esc clears the selection, so the board is in focus with nothing picked; ⌘Z/⇧⌘Z undo and redo, ⌘C/⌘V/⌘D copy, paste and
-  // duplicate, ⌘A picks every element, Delete removes the picked ones
+  // duplicate, ⌘A picks every element, Delete removes the picked ones; I toggles the screenshot badges
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // fields apply as they change, so Enter just leaves the field; one in a form submits it instead
@@ -274,6 +283,8 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       else if (mod && key === 'd') duplicate()
       else if (mod && key === 'a') selectAll()
       else if (e.key === 'Delete' || e.key === 'Backspace') remove()
+      else if (mod || e.altKey) return
+      else if (key === 'i') setBadges(badges === 'on' ? 'off' : 'on')
       else return
       e.preventDefault()
     }
@@ -492,6 +503,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
               onRotate={(part, deg) => update(s.id, rotated(s, part, deg))}
               onTransfer={(to, dx, dy) => transfer(s.id, to, dx, dy)}
               onShot={(part, patch) => update(s.id, withShot(s, part, patch, textLang))}
+              badges={badgesOf(s)}
             />
             {s.id === sel?.id && (
               <div className="slide-bar" onPointerDown={(e) => e.stopPropagation()}>
@@ -638,7 +650,7 @@ function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, 
   pickedSlides: Slide[] // slides with something picked
   /** Sets the slide's own settings (background, …) on every picked slide. */
   updateSlides: (patch: Partial<Slide>) => void
-  /** Where else in the project a screenshot ID is used, if anywhere: IDs are unique. */
+  /** Where else in the project a screenshot ID is used, if anywhere: elements may share one. */
   shotIdUser: (id: string, part: Part) => string | null
   fetchShot: (id: string) => void // the screenshot folder's file for this ID, if any, applied now
 }) {
@@ -894,21 +906,21 @@ function AngleSlider({ label, max, value, mixed, set }: { label: string; max: nu
   )
 }
 
-/** An element's screenshot ID:a file of that name in the screenshot folder replaces its screenshot. One taken
- * elsewhere in the project isn't kept, so each ID stays on one element. */
+/** An element's screenshot ID: a file of that name in the screenshot folder replaces its screenshot, on every element
+ * with that ID. */
 function ShotIdField({ id, lang, user, set, fetch }: { id: string; lang?: string; user: (id: string) => string | null; set: (id: string) => void; fetch: (id: string) => void }) {
   const [draft, setDraft] = useState(id)
   const was = useRef(id) // the ID when the field got focus: leaving it with a new one fetches that screenshot
-  const taken = draft ? user(draft) : null
+  const shared = draft ? user(draft) : null
   return (
     <label title="A file named after this ID in the project's screenshot folder (Settings › Project) replaces this screenshot">
       Screenshot ID{lang && ` (${languageName(lang)})`}
-      <input value={draft} onFocus={() => (was.current = draft)} onBlur={() => draft && draft !== was.current && !user(draft) && fetch(draft)} placeholder={lang ? `e.g. home-screen-${lang}` : 'e.g. home-screen'} spellCheck={false} aria-invalid={!!taken} onChange={(e) => {
+      <input value={draft} onFocus={() => (was.current = draft)} onBlur={() => draft && draft !== was.current && fetch(draft)} placeholder={lang ? `e.g. home-screen-${lang}` : 'e.g. home-screen'} spellCheck={false} onChange={(e) => {
         const v = e.target.value.replace(/\s/g, '-')
         setDraft(v)
-        if (!v || !user(v)) set(v)
+        set(v)
       }} />
-      {taken && <small className="taken">Already used by {taken}</small>}
+      {shared && <small className="mixed">Also on {shared}</small>}
     </label>
   )
 }

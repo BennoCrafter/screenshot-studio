@@ -11,9 +11,8 @@ type Stat = { size: number; mtime: Date | null; birthtime: Date | null }
 /** A file's identity: a copied-over file has a new size or dates even when it keeps the old name. */
 const signature = (i: Stat) => `${i.size}:${i.mtime?.getTime()}:${i.birthtime?.getTime()}`
 
-/** The folder's screenshots not applied yet (or, given `id`, the one named so), searching every folder inside it;
- *  of two with one name, the newer. */
-async function pending(p: Project, id?: string) {
+/** The folder's screenshots, searching every folder inside it; of two with one name, the newer. */
+async function scanFolder(p: Project) {
   const { readDir, stat } = await fs()
   const { join } = await import('@tauri-apps/api/path')
   const latest = new Map<string, { path: string; id: string; sig: string; abs: string; at: number }>()
@@ -29,15 +28,19 @@ async function pending(p: Project, id?: string) {
     }
   }
   await scan(p.shotFolder!, '')
-  return [...latest.values()].filter((f) => (id ? f.id === id : p.shotSeen?.[f.path] !== f.sig))
+  return [...latest.values()]
 }
 
 /** Applies the folder's new screenshots now and whenever it changes; returns how to stop, and how to fetch one
- *  screenshot ID's file again (when an element gets that ID). `tell` gets a summary. */
-export function watchShotFolder(project: () => Project, update: (fn: (p: Project) => Project) => void, tell: (msg: string) => void) {
+ *  screenshot ID's file again (when an element gets that ID). `tell` gets a summary, `found` every ID with a file. */
+export function watchShotFolder(project: () => Project, update: (fn: (p: Project) => Project) => void, tell: (msg: string) => void,
+  found: (ids: Set<string>) => void) {
   let busy = Promise.resolve()
   const sync = (id?: string) => (busy = busy.then(async () => {
-    const files = await pending(project(), id)
+    const p = project(), all = await scanFolder(p)
+    found(new Set(all.map((f) => f.id)))
+    // not applied yet, or given `id`, the one named so
+    const files = all.filter((f) => (id ? f.id === id : p.shotSeen?.[f.path] !== f.sig))
     if (!files.length) return
     const loaded = (await Promise.all(files.map((f) => fs()
       .then(({ readFile }) => readFile(f.abs))

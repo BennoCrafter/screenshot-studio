@@ -293,4 +293,5 @@ type Group = { title?: string; hint?: string; rows: Row[] }
 type Section = { id: string; label: string; icon: string; groups: Group[] }
 
 const SHORTCUTS = [['⌘ ,', 'Settings'], ['⌘ Z / ⇧⌘ Z', 'Undo / redo'], ['⌘ C / ⌘ V / ⌘ D', 'Copy / paste / duplicate'], ['⌘ A', 'Select all'], ['⌫', 'Delete selection'],
-  ['⌘ + / ⌘ − / ⌘ 0', 'Zoom in / out / fit'], ['⌘ + scroll', 'Zoom at the pointer'], ['⇧ + scroll', 'Pan sideways'], ['Space-drag', 'Pan the board'], ['Esc', 'Clear selection']]
+  ['⌘ + / ⌘ − / ⌘ 0', 'Zoom in / out / fit'], ['⌘ + scroll', 'Zoom at the pointer'], ['⇧ + scroll', 'Pan sideways'], ['Space-drag', 'Pan the board'], ['Esc', 'Clear selection'],
+  ['I', 'Screenshot ID badges']]
