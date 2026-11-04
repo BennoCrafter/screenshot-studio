@@ -122,7 +122,7 @@ export function Settings({ project, setProject }: { project: Project | null; set
   const sections: Section[] = [
     { id: 'general', label: 'General', icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.8 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.2 14H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z', groups: [
       { rows: [{ title: 'Appearance', hint: 'Light, dark, or follow the system.', keys: 'theme dark light mode color', ui: segmented(appearance, ['system', 'light', 'dark'] as const, pick) },
-        { title: 'Screenshot IDs', hint: 'Shows an ID field on devices and images, so automations can replace their screenshots by ID: drop files into the project\'s screenshot folder (set under Project, with a project open) or use the replace_screenshots MCP tool.', keys: 'screenshot id automation replace link ci',
+        { title: 'Screenshot IDs', hint: 'Shows an ID field on devices and images, so automations can replace their screenshots by ID: drop files into the project\'s screenshot folder (set under Project, with a project open) or use the update_screenshots MCP tool.', keys: 'screenshot id automation replace link ci',
           ui: <input type="checkbox" className="switch" aria-label="Screenshot IDs" checked={showIds === 'on'} onChange={(e) => setShowIds(e.target.checked ? 'on' : 'off')} /> }] },
     ] },
     ...(project ? [{ id: 'project', label: 'Project', icon: 'M4 5h16v14H4zM4 9h16', groups: [

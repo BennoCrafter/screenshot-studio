@@ -59,8 +59,8 @@ The desktop app runs an MCP server (streamable HTTP) at `http://127.0.0.1:7457/m
   screenshot-studio render_slide platform=iphone index=0   # saves render_slide-1.png
   screenshot-studio export TrackStar out iphone            # PNGs of a saved project by name; platform optional
   screenshot-studio export TrackStar TrackStar.ssproj      # the project file
-  screenshot-studio replace_screenshots '{"screenshots":{"home":"/tmp/home.png"}}'
-  screenshot-studio update_screenshots                     # apply every project's screenshot folder; prints what changed
+  screenshot-studio update_screenshots '{"screenshots":{"home":"/tmp/home.png"}}'   # by screenshot ID, in the open project
+  screenshot-studio update_screenshots                     # without IDs: apply every project's screenshot folder; prints what changed
   ```
 
 The server only listens on localhost and refuses requests from web pages (any request with an `Origin` header). Its tools can read screenshots from, and export PNGs to, anything under your home folder, `/tmp` and `/Volumes`.

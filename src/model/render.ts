@@ -15,7 +15,7 @@ export interface Slide {
   image: HTMLImageElement | null
   outerImage: HTMLImageElement | null // foldables' outer display
   device: DevicePose
-  shotId?: string // the device's screenshot ID, for automations that replace screenshots (replace_screenshots)
+  shotId?: string // the device's screenshot ID, for automations that replace screenshots (update_screenshots)
   translations?: Record<string, Translation> // other languages' text; everything else is shared
 }
 
