@@ -65,7 +65,7 @@ export async function saveFiles(files: { name: string; blob: Blob }[]) {
   return true
 }
 
-/** One file: a Save dialog on the desktop, a download in the browser. Returns false if cancelled. */
+/** One file: a Save dialog on the desktop, a download in the browser. Returns the saved path (desktop), true (browser) or false if cancelled. */
 export async function saveFile(name: string, blob: Blob, filter: Filter) {
   if (!isDesktop) {
     download(name, blob)
@@ -76,7 +76,7 @@ export async function saveFile(name: string, blob: Blob, filter: Filter) {
   if (!path) return false
   const { writeFile } = await import('@tauri-apps/plugin-fs')
   await writeFile(path, await bytes(blob))
-  return true
+  return path
 }
 
 /** Pick files of `filter`'s types; none if cancelled. The desktop app uses its own Open dialog, which lists only those

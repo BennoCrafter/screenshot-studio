@@ -263,8 +263,9 @@ async fn claude_mcp_remove() -> Result<(), String> {
 /// Opens a web link in the default browser; only https links, so the page can't launch anything else.
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
-    if !url.starts_with("https://") {
-        return Err("only https links".into());
+    // file:// only for pages the app saved, like the exported website
+    if !url.starts_with("https://") && !(url.starts_with("file://") && url.ends_with(".html")) {
+        return Err("only https links and local .html pages".into());
     }
     #[cfg(target_os = "macos")]
     let opener = "open";
