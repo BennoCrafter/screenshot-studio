@@ -4,10 +4,12 @@ import { clamp } from '../model/render'
 
 /**
  * An infinite board: Ctrl/⌘ + scroll or a trackpad pinch zooms at the cursor, scroll pans (Shift + scroll sideways),
- * Ctrl/⌘-drag, Space-drag, middle-drag or dragging empty space pans. ⌘/Ctrl + = − 0 zoom in, out and fit.
- * Children get `--z` (the zoom) so handles can stay the same size on screen. A new `reveal` pans its slide on screen.
+ * Ctrl/⌘-drag, Space-drag, middle-drag or dragging empty space pans. + and − zoom in and out, ↓ fits; with ⌘/Ctrl too,
+ * where ⌘↑ / ⌘↓ zoom in and out and ⌘0 fits.
+ * Children get `--z` (the zoom) so handles can stay the same size on screen. A new `reveal` pans its slide on screen, or
+ * with `fill` zooms so the slide takes the board's full height.
  */
-export function Board({ children, fitKey, onEmptyClick, reveal }: { children: ReactNode; fitKey: unknown; onEmptyClick?: () => void; reveal?: { slide: string } }) {
+export function Board({ children, fitKey, onEmptyClick, reveal }: { children: ReactNode; fitKey: unknown; onEmptyClick?: () => void; reveal?: { slide: string; fill?: boolean } }) {
   const stage = useRef<HTMLDivElement>(null)
   const board = useRef<HTMLDivElement>(null)
   const [view, setView] = useState({ x: 0, y: 0, z: 1 })
@@ -34,6 +36,12 @@ export function Board({ children, fitKey, onEmptyClick, reveal }: { children: Re
     const el = reveal && board.current!.querySelector(`canvas[data-slide="${reveal.slide}"]`)
     if (!el) return
     const r = el.getBoundingClientRect(), s = stage.current!.getBoundingClientRect()
+    if (reveal.fill) return setView((v) => {
+      // 40px above, 88px below for the slide's bar; centered sideways
+      const w = r.width / v.z, h = r.height / v.z, bx = (r.left - s.left - v.x) / v.z, by = (r.top - s.top - v.y) / v.z
+      const z = clamp(Math.min((s.height - 128) / h, (s.width - 96) / w), 0.05, 4)
+      return { z, x: s.width / 2 - (bx + w / 2) * z, y: 40 + (s.height - 128 - h * z) / 2 - by * z }
+    })
     // the least pan that fits it (left/top edge first when it can't), leaving room below for the slide's bar
     const by = (lo: number, hi: number, from: number, to: number) => (lo < from ? from - lo : hi > to ? Math.max(to - hi, from - lo) : 0)
     const dx = by(r.left, r.right, s.left + 48, s.right - 48), dy = by(r.top, r.bottom, s.top + 32, s.bottom - 80)
@@ -58,10 +66,11 @@ export function Board({ children, fitKey, onEmptyClick, reveal }: { children: Re
         setSpace(e.type === 'keydown')
       }
       if (e.key === 'Control' || e.key === 'Meta') setSpace(e.type === 'keydown')
-      if (e.type !== 'keydown' || !(e.metaKey || e.ctrlKey)) return
-      if (e.key === '=' || e.key === '+') zoomAt(1.25)
-      else if (e.key === '-') zoomAt(0.8)
-      else if (e.key === '0') fit()
+      if (e.type !== 'keydown' || e.altKey || document.querySelector('dialog[open]')) return
+      const mod = e.metaKey || e.ctrlKey // plain ↑ is the editor's: zoom to the picked slide
+      if (e.key === '=' || e.key === '+' || (mod && e.key === 'ArrowUp')) zoomAt(1.25)
+      else if (e.key === '-' || (mod && e.key === 'ArrowDown')) zoomAt(0.8)
+      else if ((mod && e.key === '0') || (!mod && e.key === 'ArrowDown')) fit()
       else return
       e.preventDefault()
     }

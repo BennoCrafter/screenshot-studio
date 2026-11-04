@@ -184,7 +184,7 @@ export function Settings({ project, setProject }: { project: Project | null; set
       ) }] },
     ] }] : []),
     { id: 'shortcuts', label: 'Shortcuts', icon: 'M3 6h18v12H3zM7 10h.01M11 10h.01M15 10h.01M7 14h10', groups: [
-      { rows: SHORTCUTS.map(([k, v]) => ({ title: v, keys: `keyboard shortcut ${k}`, ui: <kbd>{k}</kbd> })) },
+      ...[SHORTCUTS, BASICS].map((list, i) => ({ title: i ? 'Basics' : undefined, hint: i ? undefined : 'Moving around needs no ⌘; editing does.', rows: list.map(([k, v]) => ({ title: v, keys: `keyboard shortcut ${k}`, ui: <kbd>{k}</kbd> })) })),
     ] },
   ]
 
@@ -261,6 +261,38 @@ type Row = { title: string; hint?: string; keys?: string; wide?: boolean; ui: Re
 type Group = { title?: string; hint?: string; rows: Row[] }
 type Section = { id: string; label: string; icon: string; groups: Group[] }
 
-const SHORTCUTS = [['⌘ ,', 'Settings'], ['⌘ Z / ⇧⌘ Z', 'Undo / redo'], ['⌘ C / ⌘ V / ⌘ D', 'Copy / paste / duplicate'], ['⌘ A', 'Select all'], ['⌫', 'Delete selection'],
-  ['⌘ + / ⌘ − / ⌘ 0', 'Zoom in / out / fit'], ['⌘ + scroll', 'Zoom at the pointer'], ['⇧ + scroll', 'Pan sideways'], ['Space-drag', 'Pan the board'], ['Esc', 'Clear selection'],
-  ['← / →', 'Previous / next slide'], ['L / ⇧ L', 'Next / previous language'], ['D / ⇧ D', 'Next / previous platform'], ['I', 'Screenshot ID badges']]
+/** The ones worth a reminder: the cheatsheet shows these. Moving around needs no ⌘; editing does. */
+const SHORTCUTS = [['← / →', 'Previous / next slide'], ['1 … 9', 'Go to slide 1 … 9'], ['↑ / ↓', 'Zoom to the selected slide / fit all'],
+  ['+ / −', 'Zoom in / out'], ['L / ⇧ L', 'Next / previous language'], ['D / ⇧ D', 'Next / previous platform'], ['I', 'Screenshot ID badges']]
+/** The ones every app has, or that show themselves: only Settings lists these. */
+const BASICS = [['⌘ ,', 'Settings'], ['⌘ + / ⌘ − / ⌘ 0', 'Zoom in / out / fit'], ['⌘ ↑ / ⌘ ↓', 'Zoom in / out'], ['⌘ 1 … ⌘ 9', 'Go to slide 1 … 9'], ['⌘ Z / ⇧⌘ Z', 'Undo / redo'], ['⌘ C / ⌘ V / ⌘ D', 'Copy / paste / duplicate'], ['⌘ A', 'Select all'], ['⌫', 'Delete selection'],
+  ['Esc', 'Clear selection, or leave a text field'], ['⌘ + scroll', 'Zoom at the pointer'], ['⇧ + scroll', 'Pan sideways'], ['Space-drag', 'Pan the board']]
+
+/** The less obvious shortcuts, in a corner while ⌘ (Ctrl elsewhere) is held alone for a second; any other key, click
+ *  or scroll hides them. */
+export function Cheatsheet() {
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const hide = () => { clearTimeout(timer); setShown(false) }
+    const onDown = (e: KeyboardEvent) => {
+      hide()
+      if ((e.key === 'Meta' || e.key === 'Control') && !e.repeat) timer = setTimeout(() => setShown(true), 1000)
+    }
+    const events = ['keyup', 'pointerdown', 'wheel', 'blur'] as const
+    window.addEventListener('keydown', onDown)
+    for (const ev of events) window.addEventListener(ev, hide)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('keydown', onDown)
+      for (const ev of events) window.removeEventListener(ev, hide)
+    }
+  }, [])
+  if (!shown) return null
+  return (
+    <div className="cheatsheet" role="dialog" aria-label="Keyboard shortcuts">
+      <dl>{SHORTCUTS.map(([k, v]) => <div key={k}><dt><kbd>{k}</kbd></dt><dd>{v}</dd></div>)}</dl>
+      <p>All shortcuts: Settings › Shortcuts</p>
+    </div>
+  )
+}

@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
-import { isDesktop } from './lib/native'
+import { isDesktop, typing } from './lib/native'
 import { applyAppearance, applyMcpAccess } from './settings/prefs'
 
 // the desktop window is see-through glass; the editor paints over it, the launcher lets it show
@@ -10,6 +10,11 @@ import { applyAppearance, applyMcpAccess } from './settings/prefs'
 if (isDesktop && navigator.userAgent.includes('Mac')) document.documentElement.classList.add('glass')
 applyAppearance()
 applyMcpAccess()
+
+// Esc leaves a text field, unless the field already used it (clearing a search) or a dialog closes on it
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !e.defaultPrevented && typing(e.target) && !(e.target as Element).closest('dialog')) (e.target as HTMLElement).blur()
+})
 
 // on desktop, warnings, errors and crashes also go to the app's log file (see tauri-plugin-log in lib.rs)
 if (isDesktop) import('@tauri-apps/plugin-log').then(({ warn, error }) => {

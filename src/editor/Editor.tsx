@@ -7,6 +7,7 @@ import { animate } from '../lib/motion'
 import { ask, isDesktop, typing } from '../lib/native'
 import { fontFrom, languageName, languagesOf, type Project } from '../model/project'
 import { openSettings, useStored, useWidth } from '../settings/prefs'
+import { Cheatsheet } from '../settings/Settings'
 import { added, isDevice, isText, itemOf, kindOf, labelOf, moved, positionOf, newItem, partName, removed, reset, resized, restack, rotated, shotIdOf, shotIdsOf, transferred, withShot, withText } from '../model/elements'
 import { clamp, layersOf, localize, PLATFORMS, sizeOf, type Item, type Part, type Platform, type Slide, type Style, type Target } from '../model/render'
 import { SlideCanvas } from './SlideCanvas'
@@ -241,11 +242,11 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         : borrowed ? `${languageName(lang)} has no screenshot ID of its own, so it shows the ${languageName(langs[0])} screenshot (${id})`
         : ok ? `${id} is in the screenshot folder` : `No file named ${id} in the screenshot folder` } as const]
   })) : undefined
-  const [reveal, setReveal] = useState<{ slide: string }>() // a slide picked by keyboard, brought on screen
+  const [reveal, setReveal] = useState<{ slide: string; fill?: boolean }>() // a slide picked by keyboard, brought on screen
 
   // Esc clears the selection, so the board is in focus with nothing picked; ⌘Z/⇧⌘Z undo and redo, ⌘C/⌘V/⌘D copy, paste and
   // duplicate, ⌘A picks every element, Delete removes the picked ones; I toggles the screenshot badges, L / D step through
-  // the languages / platforms (Shift goes back), ← / → pick the previous / next slide
+  // the languages / platforms (Shift goes back), ← / → or 1…9 (⌘ optional) pick a slide, ↑ zooms the picked one to fill the board
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // fields apply as they change, so Enter just leaves the field; one in a form submits it instead
@@ -259,6 +260,10 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       else if (mod && key === 'v') paste()
       else if (mod && key === 'd') duplicate()
       else if (mod && key === 'a') selectAll()
+      else if (/^[1-9]$/.test(e.key) && !e.altKey) {
+        const s = slides[+e.key - 1]
+        if (s) { selectSlide(s.id); setReveal({ slide: s.id }) }
+      }
       else if (e.key === 'Delete' || e.key === 'Backspace') remove()
       else if (mod || e.altKey) return
       else if (key === 'i') setBadges(badges === 'on' ? 'off' : 'on')
@@ -267,6 +272,11 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         const i = sel ? slides.indexOf(sel) + (e.key === 'ArrowLeft' ? -1 : 1) : 0
         if (slides[i]) { selectSlide(slides[i].id); setReveal({ slide: slides[i].id }) }
+      }
+      else if (e.key === 'ArrowUp') {
+        const s = sel ?? slides[0]
+        if (!sel) selectSlide(s.id)
+        setReveal({ slide: s.id, fill: true })
       }
       else return
       e.preventDefault()
@@ -548,6 +558,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
         {isDesktop && <Chat hidden={tab !== 'chat'} />}
       </aside>
       {notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}
+      <Cheatsheet />
     </div>
   )
 }
