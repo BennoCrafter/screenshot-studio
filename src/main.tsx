@@ -11,9 +11,16 @@ if (isDesktop && navigator.userAgent.includes('Mac')) document.documentElement.c
 applyAppearance()
 applyMcpAccess()
 
-// Esc leaves a text field, unless the field already used it (clearing a search) or a dialog closes on it
+// Esc leaves a text field, unless the field already used it (clearing a search); in a dialog, the next Esc closes it
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !e.defaultPrevented && typing(e.target) && !(e.target as Element).closest('dialog')) (e.target as HTMLElement).blur()
+  if (e.key === 'Escape' && !e.defaultPrevented && typing(e.target)) { e.preventDefault(); (e.target as HTMLElement).blur() }
+})
+
+// ⌘F / Ctrl+F jumps to the search field of the open dialog (template chooser, settings)
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'f' || !(e.metaKey || e.ctrlKey)) return
+  const field = [...document.querySelectorAll<HTMLInputElement>('dialog[open] input[type=search]')].pop()
+  if (field) { e.preventDefault(); field.select() }
 })
 
 // on desktop, warnings, errors and crashes also go to the app's log file (see tauri-plugin-log in lib.rs)

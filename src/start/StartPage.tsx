@@ -4,6 +4,8 @@ import { deleteProject, listProjects, PROJECT_FILE, when, withFonts, type Projec
 import { PLATFORMS, type Platform } from '../model/render'
 import { loadStore, STORE, storeTemplate } from '../model/openscrgen'
 import { BigPreview, StoreCard, TemplateCard } from './TemplateGallery'
+import { Tour } from './Tour'
+import { getConfig, setConfig } from '../settings/prefs'
 import { ALL_PLATFORMS, BUILT_IN, toTarget, useCustomTemplates, type Template } from '../model/templates'
 
 type Tab = 'all' | Platform | 'store' // store: Open Screenshot Generator's templates
@@ -15,6 +17,16 @@ export function StartPage({ onOpen, onCreate, onImport }: { onOpen: (id: string)
   useEffect(() => {
     listProjects().then(setRecent, () => setRecent([]))
   }, [])
+  const openChooser = () => { chooser.current!.showModal(); chooser.current!.focus() }
+  // the tour runs on first launch until closed once, and again from Take the Tour
+  const [toured, setToured] = useState(true) // hidden until the settings file says otherwise
+  const [touring, setTouring] = useState(false)
+  useEffect(() => {
+    const load = () => getConfig<boolean>('seenTour').then((v) => setToured(!!v))
+    load()
+    window.addEventListener('config-changed', load)
+    return () => window.removeEventListener('config-changed', load)
+  }, [])
 
   return (
     <div className="start" data-tauri-drag-region>
@@ -22,7 +34,7 @@ export function StartPage({ onOpen, onCreate, onImport }: { onOpen: (id: string)
         <img className="app-icon" src="/favicon.svg" width="72" height="72" alt="" />
         <h1>Screenshot Studio</h1>
         <p className="hint">App Store screenshots for iPhone, iPad and Mac</p>
-        <button className="start-action" onClick={() => { chooser.current!.showModal(); chooser.current!.focus() }}>
+        <button className="start-action" onClick={openChooser}>
           <strong>Create New Project…</strong>
           <small>Start from a template</small>
         </button>
@@ -36,6 +48,7 @@ export function StartPage({ onOpen, onCreate, onImport }: { onOpen: (id: string)
           <strong>Open Project File…</strong>
           <small>A .ssproj file, or an Open Screenshot Generator project</small>
         </button>
+        <button className="link-button" onClick={() => setTouring(true)}>Take the Tour</button>
       </section>
 
       <section className="recents" data-tauri-drag-region>
@@ -70,6 +83,7 @@ export function StartPage({ onOpen, onCreate, onImport }: { onOpen: (id: string)
       <dialog ref={chooser} tabIndex={-1} className="chooser" onClick={(e) => e.target === chooser.current && chooser.current!.close()}>
         <Chooser onCancel={() => chooser.current!.close()} onCreate={onCreate} />
       </dialog>
+      <Tour open={!toured || touring} onClose={() => { setToured(true); setTouring(false); setConfig('seenTour', true) }} onCreate={openChooser} />
     </div>
   )
 }
@@ -78,19 +92,8 @@ function Chooser({ onCancel, onCreate }: { onCancel: () => void; onCreate: (p: P
   const [custom, store] = useCustomTemplates()
   const [tab, setTab] = useState<Tab>('all')
   const [query, setQuery] = useState('')
-  const search = useRef<HTMLInputElement>(null)
   const matches = (...texts: (string | undefined)[]) => texts.some((x) => x?.toLowerCase().includes(query.trim().toLowerCase()))
   const templates = tab === 'store' ? [] : [...BUILT_IN, ...custom].filter((t) => (tab === 'all' || t.targets[tab]) && matches(t.name, t.description, t.author))
-  useEffect(() => {
-    // ⌘F / Ctrl+F finds a template while the chooser is open
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'f' || !(e.metaKey || e.ctrlKey) || !search.current?.closest('dialog')?.open) return
-      e.preventDefault()
-      search.current.select()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
   const [picked, setPicked] = useState<Template>(BUILT_IN[1])
   const [name, setName] = useState('My App')
   const available = ALL_PLATFORMS.filter((p) => picked.targets[p])
@@ -155,7 +158,6 @@ function Chooser({ onCancel, onCreate }: { onCancel: () => void; onCreate: (p: P
           <span className={tab === 'store' ? 'on' : ''}><button onClick={() => setTab('store')}>Open Screenshot Generator</button></span>
         </nav>
         <input
-          ref={search}
           type="search"
           className="tpl-search"
           placeholder="Search templates"

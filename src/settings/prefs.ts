@@ -69,3 +69,30 @@ export function useWidth(key: string, initial: number) {
   const [w, setW] = useStored(key, String(initial))
   return [Number(w) || initial, (px: number) => setW(String(px))] as const
 }
+
+// desktop: settings.json in the app data folder, next to projects/; browser: localStorage
+const CONFIG = 'settings.json'
+async function readConfig(): Promise<Record<string, unknown>> {
+  try {
+    if (!isDesktop) return JSON.parse(localStorage.getItem(`screenshot-studio:${CONFIG}`) ?? '{}')
+    const { BaseDirectory, exists, readTextFile } = await import('@tauri-apps/plugin-fs')
+    const opt = { baseDir: BaseDirectory.AppData }
+    return (await exists(CONFIG, opt)) ? JSON.parse(await readTextFile(CONFIG, opt)) : {}
+  } catch { return {} }
+}
+/** A value from the settings file. */
+export const getConfig = async <T,>(key: string) => (await readConfig())[key] as T | undefined
+/** Sets a value in the settings file; listeners of 'config-changed' hear about it. */
+export async function setConfig(key: string, value: unknown) {
+  const text = JSON.stringify({ ...(await readConfig()), [key]: value }, null, 2)
+  try {
+    if (!isDesktop) localStorage.setItem(`screenshot-studio:${CONFIG}`, text)
+    else {
+      const { BaseDirectory, mkdir, writeTextFile } = await import('@tauri-apps/plugin-fs')
+      const opt = { baseDir: BaseDirectory.AppData }
+      await mkdir('', { ...opt, recursive: true })
+      await writeTextFile(CONFIG, text, opt)
+    }
+  } catch { /* not remembered */ }
+  window.dispatchEvent(new CustomEvent('config-changed', { detail: key }))
+}

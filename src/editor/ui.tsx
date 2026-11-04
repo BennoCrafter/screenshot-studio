@@ -12,7 +12,8 @@ export function Resizer({ edge, set }: { edge: 'left' | 'right'; set: (x: number
     <div
       className={`resizer ${edge}`}
       title="Drag to resize"
-      onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+      // preventDefault: otherwise the drag selects the text it passes over
+      onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId) }}
       onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && set(e.clientX)}
     />
   )

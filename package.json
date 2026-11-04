@@ -14,6 +14,7 @@
     "bump": "node scripts/bump.mjs",
     "release": "node scripts/release.mjs",
     "openscrgen": "node scripts/openscrgen.mjs",
+    "tour-images": "node scripts/tour-images.mjs",
     "cli": "cargo run --quiet --features tauri/custom-protocol --target-dir src-tauri/target/cli --manifest-path src-tauri/Cargo.toml --"
   },
   "dependencies": {

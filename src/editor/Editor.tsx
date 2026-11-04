@@ -19,6 +19,7 @@ import { SlideInspector } from './Inspector'
 import { LanguageDialog } from './LanguageDialog'
 import { Layers, Palette } from './Palette'
 import { Icon, Menu, Resizer } from './ui'
+import { Tips } from './Tips'
 
 /** One element on one slide. */
 type Sel = { slide: string; part: Part }
@@ -369,7 +370,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
           )}
         </nav>
         <span className="divider" />
-        <span className="platform-tabs">
+        <span className="platform-tabs" data-tip="languages">
           {langs.map((l, i) => (
             <span key={l} className={l === lang ? 'on' : ''}>
               <button onClick={() => animate(() => setLang(l))} title={i === 0 ? 'Primary language' : undefined}>{languageName(l)}</button>
@@ -559,6 +560,7 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
       </aside>
       {notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}
       <Cheatsheet />
+      <Tips />
     </div>
   )
 }

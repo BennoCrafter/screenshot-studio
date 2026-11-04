@@ -77,14 +77,25 @@ pnpm desktop        # desktop app in development mode
 pnpm desktop:build  # bundled app in src-tauri/target/release/bundle/
 ```
 
-Other scripts: `pnpm build` (type check plus production web build into `dist/`) and `pnpm lint` (oxlint).
+Other scripts:
+
+```sh
+pnpm build          # type check plus production web build into dist/
+pnpm preview        # serve that build
+pnpm lint           # oxlint
+pnpm cli <command>  # the command line (see MCP above), built and run against the running app
+pnpm openscrgen <file.json | post link | template name> [out dir]   # an Open Screenshot Generator project as a template and .ssproj
+pnpm tour-images    # the welcome tour's pictures from assets/screenshots/ (needs cwebp: brew install webp)
+pnpm bump [patch|minor|major|x.y.z]     # raise the version everywhere it's written
+pnpm release [patch|minor|major|x.y.z]  # bump, tag and push to main, which starts the Release workflow
+```
 
 ## Where data is stored
 
-| | Projects | Saved templates |
-|---|---|---|
-| Desktop app | `<app data>/projects/<id>/`, which holds `project.json` and one image file per screenshot | `<app data>/templates.json` |
-| Browser | IndexedDB (`screenshot-studio`) | localStorage |
+| | Projects | Saved templates | Settings (welcome tour seen) |
+|---|---|---|---|
+| Desktop app | `<app data>/projects/<id>/`, which holds `project.json` and one image file per screenshot | `<app data>/templates.json` | `<app data>/settings.json` |
+| Browser | IndexedDB (`screenshot-studio`) | localStorage | localStorage |
 
 `<app data>` is the app's data folder for the identifier `app.screenshotstudio.desktop`:
 

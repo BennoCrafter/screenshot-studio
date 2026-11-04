@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { claudeLinked, MCP_URL } from '../agent/agent'
 import { isDesktop, openLink, tell } from '../lib/native'
-import { applyAppearance, applyMcpAccess, effortName, MODES, modelOf, storedAppearance, storedOthers, useModels, useStored, type Appearance } from './prefs'
+import { applyAppearance, applyMcpAccess, effortName, MODES, modelOf, setConfig, storedAppearance, storedOthers, useModels, useStored, type Appearance } from './prefs'
 import type { Project } from '../model/project'
 import { PLATFORMS, SIZES, type SizeName } from '../model/render'
 
@@ -153,6 +153,8 @@ export function Settings({ project, setProject }: { project: Project | null; set
               <button onClick={() => copy(cliCommand)}>{copied === cliCommand ? 'Copied' : 'Copy'}</button>
             </div>
           ) }] : [])] },
+      { title: 'Welcome tour and tips', rows: [{ title: 'Show again', hint: 'The welcome tour on the start page and the tips in the editor.', keys: 'tour tips onboarding welcome intro reset help',
+        ui: <span className="actions"><button onClick={async () => { await setConfig('seenTour', false); await setConfig('seenEditorTips', false); dialog.current!.close() }}>Reset</button></span> }] },
     ] },
     ...(project ? [{ id: 'project', label: 'Project', icon: 'M4 5h16v14H4zM4 9h16', groups: [
       { title: `Export size · ${project.name}`, hint: 'The pixel size PNGs are exported at. The App Store asks for one of these per device class; the first is the one it requires.', rows: project.targets.map((t) => ({

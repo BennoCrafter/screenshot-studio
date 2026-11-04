@@ -21,7 +21,7 @@ There are no automated tests. After a change, run the type check, lint and build
 - `src/` is sorted by feature: `start/`, `editor/`, `export/`, `agent/`, `settings/`. Code with no UI goes in `model/` (projects, slides, rendering, templates), `devices/` or `lib/` (platform helpers). New files go in the folder of the feature they serve; only the entry files sit in `src/` itself.
 - `.tsx` files export only components (lint enforces it, for fast refresh). Hooks and helpers live in `.ts` files: `settings/prefs.ts`, `model/templates.ts`, `editor/history.ts` and so on.
 - Edits to a slide go through `model/elements.ts`: each function takes a slide and returns a patch (`Partial<Slide>`). Keep that logic out of components.
-- Scripts reach into `src/` by path: `scripts/bump.mjs` (`agent/agent.ts`) and `scripts/openscrgen.mjs` (`model/openscrgen.ts`). Update them when moving those files.
+- Scripts reach into `src/` by path: `scripts/bump.mjs` (`agent/agent.ts`), `scripts/openscrgen.mjs` (`model/openscrgen.ts`) and `scripts/tour-images.mjs` (writes `start/tour-images/`). Update them when moving those files.
 - Anything that differs between the browser and the desktop app goes in `lib/native.ts`. Tauri modules are imported dynamically, so the browser build never loads them.
 - One draw function (`model/render.ts`) serves the preview, the export and the agent's `render_slide`. Don't add a second path.
 - MCP tools are defined in `agent/tools.ts`. `src-tauri/src/lib.rs` only forwards requests to the webview.
