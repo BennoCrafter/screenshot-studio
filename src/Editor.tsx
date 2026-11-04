@@ -259,12 +259,16 @@ export function Editor({ project, setProject: commit, onClose }: { project: Proj
     fetchShot.current = folder.fetch
     return () => { folder.stop(); fetchShot.current = undefined; clearTimeout(hide) }
   }, [project.shotFolder])
-  // badges on the device frames: green when their screenshot ID has a file in the screenshot folder
+  // badges on the device frames: green when their screenshot ID has a file in the screenshot folder, amber when only the
+  // primary language's does (this language has no ID of its own, so it shows that screenshot)
   const [badges, setBadges] = useStored<'on' | 'off'>('shot-badges', 'off')
   const badgesOf = (s: Slide) => badges === 'on' ? Object.fromEntries(layersOf(s).filter((p) => isDevice(s, p)).map((p) => {
-    const id = shotIdOf(s, p, textLang) ?? shotIdOf(s, p) // a language without its own ID shows the primary language's screenshot
-    return [p, { ok: !!id && folderIds.has(id), text: id ?? 'No ID',
-      title: !id ? 'No screenshot ID' : !project.shotFolder ? 'No screenshot folder (Settings › Project)' : folderIds.has(id) ? `${id} is in the screenshot folder` : `No file named ${id} in the screenshot folder` }]
+    const own = shotIdOf(s, p, textLang), id = own ?? shotIdOf(s, p)
+    const ok = !!id && folderIds.has(id), borrowed = ok && textLang && !own
+    return [p, { state: borrowed ? 'borrowed' : ok ? 'ok' : 'missing', text: borrowed ? `${id} · ${languageName(langs[0])} only` : id ?? 'No ID',
+      title: !id ? 'No screenshot ID' : !project.shotFolder ? 'No screenshot folder (Settings › Project)'
+        : borrowed ? `${languageName(lang)} has no screenshot ID of its own, so it shows the ${languageName(langs[0])} screenshot (${id})`
+        : ok ? `${id} is in the screenshot folder` : `No file named ${id} in the screenshot folder` } as const]
   })) : undefined
 
   // Esc clears the selection, so the board is in focus with nothing picked; ⌘Z/⇧⌘Z undo and redo, ⌘C/⌘V/⌘D copy, paste and

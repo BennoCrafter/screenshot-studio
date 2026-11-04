@@ -53,7 +53,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
   onTransfer: (to: string, dx: number, dy: number) => void
   /** Changes a device element: its pose or screenshots. */
   onShot: (part: Part, patch: Partial<Shot>) => void
-  badges?: Record<Part, { ok: boolean; text: string; title: string }> // on device frames: whether their screenshot ID has a file
+  badges?: Record<Part, { state: 'ok' | 'borrowed' | 'missing'; text: string; title: string }> // on device frames: whether their screenshot ID has a file
 }) {
   const ref = useRef<HTMLCanvasElement>(null)
   const drag = useRef<{ grip: Grip; x: number; y: number; start: DevicePose; mover?: (dx: number, dy: number) => void; resizer?: (ratio: number) => void; c?: { x: number; y: number }; part?: Part; deg?: number; snap?: { box: Rect; x: number[]; y: number[] }; parts?: Part[]
@@ -275,7 +275,7 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
             onDoubleClick={at.text ? () => onEdit(p) : undefined}
             {...handlers}
           >
-            {badges?.[p] && <span className={`shot-badge ${badges[p].ok ? 'ok' : ''}`} title={badges[p].title}>{badges[p].ok ? '✓' : '✕'} {badges[p].text}</span>}
+            {badges?.[p] && <span className={`shot-badge ${badges[p].state}`} title={badges[p].title}>{badges[p].state === 'missing' ? '✕' : '✓'} {badges[p].text}</span>}
             {solo === p && !at.dev && CORNERS.map((c) => (
               <span key={c} className={`corner ${c}`} title="Drag to resize" onPointerDown={resize([p])} {...handlers} />
             ))}
