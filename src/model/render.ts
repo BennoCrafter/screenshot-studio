@@ -246,17 +246,38 @@ function own(c: HTMLCanvasElement) {
   return k
 }
 
-/** A slide drawn at full size off screen, as a PNG; `scale` shrinks it. */
-export function renderSlide(s: Slide, [w, h]: readonly [number, number], scale = 1) {
-  const full = document.createElement('canvas')
+/** The canvas cut down to its painted pixels, so shadows and turned devices fit exactly. */
+function cropped(c: HTMLCanvasElement) {
+  const { data } = c.getContext('2d')!.getImageData(0, 0, c.width, c.height)
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+    if (!data[(y * c.width + x) * 4 + 3]) continue
+    if (x < x0) x0 = x
+    if (x > x1) x1 = x
+    if (y < y0) y0 = y
+    if (y > y1) y1 = y
+  }
+  if (x1 < 0) return c // nothing painted
+  const k = document.createElement('canvas')
+  k.width = x1 - x0 + 1
+  k.height = y1 - y0 + 1
+  k.getContext('2d')!.drawImage(c, -x0, -y0)
+  return k
+}
+
+/** A slide drawn at full size off screen, as a PNG; `scale` shrinks it. `devicesOnly` leaves just the devices (pose and shadow kept) on a transparent background, cropped to them. */
+export function renderSlide(s: Slide, [w, h]: readonly [number, number], scale = 1, devicesOnly = false) {
+  let full = document.createElement('canvas')
   full.width = w
   full.height = h
-  drawSlide(full.getContext('2d')!, s, w, h)
+  const isDevice = (p: Part) => p === 'device' || s.items?.some((i) => i.id === p && i.kind === 'device')
+  drawSlide(full.getContext('2d')!, devicesOnly ? { ...s, bg1: 'transparent', bg2: 'transparent', layers: layersOf(s).filter(isDevice) } : s, w, h)
+  if (devicesOnly) full = cropped(full)
   let out = full
   if (scale < 1) {
     out = document.createElement('canvas')
-    out.width = Math.round(w * scale)
-    out.height = Math.round(h * scale)
+    out.width = Math.round(full.width * scale)
+    out.height = Math.round(full.height * scale)
     out.getContext('2d')!.drawImage(full, 0, 0, out.width, out.height)
   }
   return new Promise<Blob>((resolve) => out.toBlob((b) => resolve(b!), 'image/png'))

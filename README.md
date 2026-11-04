@@ -55,8 +55,10 @@ The desktop app runs an MCP server (streamable HTTP) at `http://127.0.0.1:7457/m
   ```sh
   screenshot-studio projects                               # the saved projects
   screenshot-studio export TrackStar --out out --platform iphone   # PNGs; both options optional
+  screenshot-studio export TrackStar --devices-only --out out --platform iphone   # only the devices, on a transparent background
   screenshot-studio save TrackStar TrackStar.ssproj        # the project file
   screenshot-studio render TrackStar 1 --platform ipad     # a preview of slide 1, saved as TrackStar-1.png
+  screenshot-studio render TrackStar 1 --devices-only     # the same, only the devices on a transparent background
   screenshot-studio shots TrackStar home=shots/home.png    # replace screenshots by screenshot ID
   screenshot-studio shots                                  # apply every project's screenshot folder; prints what changed
   screenshot-studio call get_state                         # any MCP tool (screenshot-studio tools lists them)

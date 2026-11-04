@@ -10,10 +10,12 @@ use std::time::{Duration, Instant};
 
 const USAGE: &str = r#"Usage: screenshot-studio <command>
   projects                                         the saved projects
-  export <project> [--out <dir>] [--platform <p>]  PNGs of every slide and language (default: this folder)
+  export <project> [--out <dir>] [--platform <p>] [--devices-only]
+                                                   PNGs of every slide and language (default: this folder);
+                                                   --devices-only: only the devices, on a transparent background
   save <project> <file.ssproj>                     the project as one file, screenshots inside
   shots [<project>] [<id>=<file> …]                replace screenshots by ID; without IDs, apply the screenshot folders
-  render <project> <slide> [--platform <p>] [--language <code>] [--out <file.png>]
+  render <project> <slide> [--platform <p>] [--language <code>] [--out <file.png>] [--devices-only]
                                                    a preview PNG of slide 1, 2, … (default: <project>-<slide>.png)
   tools                                            the app's MCP tools, for call
   call <tool> [key=value … | '{…}' | -]            run one MCP tool; values are JSON when they parse, - reads JSON from stdin
@@ -74,8 +76,10 @@ fn run(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "export" => {
-            let (pos, mut a) = split(rest, &["out", "platform"])?;
-            let [project] = pos[..] else { return usage("export <project> [--out <dir>] [--platform <p>]") };
+            let flags: Vec<String> = rest.iter().filter(|a| *a != "--devices-only").cloned().collect();
+            let (pos, mut a) = split(&flags, &["out", "platform"])?;
+            let [project] = pos[..] else { return usage("export <project> [--out <dir>] [--platform <p>] [--devices-only]") };
+            a.insert("devicesOnly".into(), json!(flags.len() < rest.len()));
             let dir = absolute(a.remove("out").as_ref().and_then(Value::as_str).unwrap_or("."))?;
             a.insert("dir".into(), json!(dir));
             a.insert("project".into(), json!(project));
@@ -106,8 +110,10 @@ fn run(args: &[String]) -> Result<(), String> {
             show("update_screenshots", a, None)
         }
         "render" => {
-            let (pos, mut a) = split(rest, &["platform", "language", "out"])?;
-            let [project, slide] = pos[..] else { return usage("render <project> <slide> [--platform <p>] [--language <code>] [--out <file.png>]") };
+            let flags: Vec<String> = rest.iter().filter(|a| *a != "--devices-only").cloned().collect();
+            let (pos, mut a) = split(&flags, &["platform", "language", "out"])?;
+            let [project, slide] = pos[..] else { return usage("render <project> <slide> [--platform <p>] [--language <code>] [--out <file.png>] [--devices-only]") };
+            a.insert("devicesOnly".into(), json!(flags.len() < rest.len()));
             let n: usize = slide.parse().ok().filter(|n| *n > 0).ok_or(format!("The slide is a number from 1, got {slide}"))?;
             let out = a.remove("out").and_then(|v| v.as_str().map(String::from)).unwrap_or(format!("{project}-{n}.png"));
             a.insert("project".into(), json!(project));

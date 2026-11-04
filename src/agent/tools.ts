@@ -281,12 +281,12 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
   {
     name: 'render_slide',
     description: 'Look at a slide exactly as it exports, as a downscaled PNG. Use it to check your work.',
-    inputSchema: { type: 'object', properties: { platform: platformArg, language: languageArg, index: { type: 'integer', description: '0-based slide index' }, project: projectProp }, required: ['index'] },
+    inputSchema: { type: 'object', properties: { platform: platformArg, language: languageArg, index: { type: 'integer', description: '0-based slide index' }, devicesOnly: { type: 'boolean', description: 'Only the devices, on a transparent background cropped to them' }, project: projectProp }, required: ['index'] },
     run: async (host, a) => {
       const t = targetOf(await projectArg(host, a.project), a.platform as string)
       const s = slideAt(t, a.index as number)
       const [w, h] = sizeOf(t)
-      return [{ type: 'image', data: await base64(await renderSlide(localize(s, a.language as string), sizeOf(t), Math.min(1, 1000 / Math.max(w, h)))), mimeType: 'image/png' }]
+      return [{ type: 'image', data: await base64(await renderSlide(localize(s, a.language as string), sizeOf(t), Math.min(1, 1000 / Math.max(w, h)), !!a.devicesOnly)), mimeType: 'image/png' }]
     },
   },
   {
@@ -358,7 +358,7 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
   {
     name: 'export_pngs',
     description: 'Write every slide in every language at full App Store resolution as PNG files into a folder (created if missing). Exports the open project, or a saved one without opening it. Returns the file paths.',
-    inputSchema: { type: 'object', properties: { dir: { type: 'string', description: 'Absolute folder path' }, platform: { ...platformArg, description: 'Omit to export all platforms.' }, project: projectProp }, required: ['dir'] },
+    inputSchema: { type: 'object', properties: { dir: { type: 'string', description: 'Absolute folder path' }, platform: { ...platformArg, description: 'Omit to export all platforms.' }, devicesOnly: { type: 'boolean', description: 'Only the devices with their screenshots, posed as on the slide, on a transparent background cropped to them' }, project: projectProp }, required: ['dir'] },
     run: async (host, a) => {
       const p = await projectArg(host, a.project)
       const { mkdir, writeFile } = await import('@tauri-apps/plugin-fs')
@@ -369,8 +369,8 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
         const [w, h] = sizeOf(t)
         for (const l of languagesOf(p)) {
           for (const [i, s] of t.slides.entries()) {
-            const path = `${dir}/${p.name}-${t.platform}-${l}-${i + 1}-${w}x${h}.png`
-            await writeFile(path, new Uint8Array(await (await renderSlide(localize(s, l), sizeOf(t))).arrayBuffer()))
+            const path = `${dir}/${p.name}-${t.platform}-${l}-${i + 1}-${a.devicesOnly ? 'device' : `${w}x${h}`}.png`
+            await writeFile(path, new Uint8Array(await (await renderSlide(localize(s, l), sizeOf(t), 1, !!a.devicesOnly)).arrayBuffer()))
             written.push(path)
           }
         }

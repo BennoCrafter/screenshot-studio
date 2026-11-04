@@ -28,6 +28,8 @@ export function Export({ project }: { project: Project }) {
   const shots = withShots === 'on'
   const [share, setShare] = useState(false) // opt in; even then the user submits it on GitHub themselves
   const [done, setDone] = useState<string | null>(null)
+  const [devices, setDevices] = useStored<'on' | 'off'>('export-devices', 'off')
+  const devicesOnly = kind === 'png' && devices === 'on'
   const [folders, pickFolders] = useStored<Folders>('export-folders', 'none')
   const [progress, setProgress] = useState<{ n: number; of: number; what: string } | null>(null) // PNG export under way
 
@@ -81,8 +83,8 @@ export function Export({ project }: { project: Project }) {
             setProgress({ n: files.length, of: count, what: `${PLATFORMS[t.platform].label} · ${languageName(l)} · slide ${n}` })
             await new Promise(requestAnimationFrame) // let the bar paint before the next slide renders
             const sub = { none: '', 'lang-device': `${l}/${PLATFORMS[t.platform].label}/`, 'device-lang': `${PLATFORMS[t.platform].label}/${l}/` }[folders]
-            const blob = await renderSlide(localize(s, l), [w, h])
-            files.push({ name: `${sub}${project.name.replace(/[/\\]/g, '-')}-${t.platform}-${l}-${n}-${w}x${h}.png`, blob })
+            const blob = await renderSlide(localize(s, l), [w, h], 1, devicesOnly)
+            files.push({ name: `${sub}${project.name.replace(/[/\\]/g, '-')}-${t.platform}-${l}-${n}-${devicesOnly ? 'device' : `${w}x${h}`}.png`, blob })
             group.shots.push({ alt: labelOf(s) || `Slide ${n}`, blob })
           }
         }
@@ -179,6 +181,12 @@ export function Export({ project }: { project: Project }) {
                   ))}
                 </div>
               </section>
+            )}
+            {kind === 'png' && (
+              <label className="ex-switch">
+                <span>Devices only<small>Just the devices with their screenshots, turned as on the slide, on a transparent background cropped to fit.</small></span>
+                <input type="checkbox" className="switch" checked={devicesOnly} onChange={(e) => setDevices(e.target.checked ? 'on' : 'off')} />
+              </label>
             )}
             {isDesktop && kind === 'png' && (
               <section className="ex-platform">
