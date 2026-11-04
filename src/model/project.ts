@@ -2,7 +2,7 @@
 // them as files in the app data folder (~/Library/Application Support/app.screenshotstudio.desktop
 // on macOS); the browser keeps them in IndexedDB with their screenshots as Blobs.
 
-import { isDesktop, typeOfName } from './native'
+import { isDesktop, typeOfName } from '../lib/native'
 import { fromOpenScrGen, isOpenScrGen } from './openscrgen'
 import { FONT, type Item, type Platform, type Slide, type Target, type Translation } from './render'
 

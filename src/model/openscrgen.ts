@@ -3,7 +3,7 @@
 
 import { toDataUrl, type ProjectFont, type WithImages } from './project'
 import { FONT, PLATFORMS, SIZES, type Item, type Platform, type SizeName } from './render'
-import type { DevicePose } from './devices/render3d'
+import type { DevicePose } from '../devices/render3d'
 import { poseFor, type Template } from './templates'
 
 type Data = WithImages<string | null>
@@ -61,7 +61,7 @@ export const storeTemplate = (file: string) => {
 }
 
 /** A converted project as a template. */
-const asTemplate = (project: Data, description: string, author: string): Template => ({
+export const asTemplate = (project: Data, description: string, author: string): Template => ({
   id: `openscrgen-${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'openscrgen'}`,
   name: project.name, description, author,
   targets: Object.fromEntries(project.targets.map(({ slides, ...t }) => [t.platform, { ...t, slides: slides.map(({ id: _, ...s }) => s) }])),

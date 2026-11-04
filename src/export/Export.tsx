@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { isDesktop, openLink, saveFile, saveFiles } from './native'
-import { languageName, languagesOf, PROJECT_FILE, projectToFile, type Project } from './project'
-import { labelOf } from './elements'
-import { localize, PLATFORMS, renderSlide, sizeOf } from './render'
-import { useStored } from './prefs'
+import { isDesktop, openLink, saveFile, saveFiles } from '../lib/native'
+import { languageName, languagesOf, PROJECT_FILE, projectToFile, type Project } from '../model/project'
+import { labelOf } from '../model/elements'
+import { localize, PLATFORMS, renderSlide, sizeOf } from '../model/render'
+import { useStored } from '../settings/prefs'
 import { websiteOf } from './website'
-import { loadCustom, saveCustom, shareTemplate, toData, type Template } from './templates'
+import { loadCustom, saveCustom, shareTemplate, toData, type Template } from '../model/templates'
 
 const THUMB_H = 180 // every platform's thumbnails the same height
 

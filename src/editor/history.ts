@@ -1,7 +1,7 @@
 // Undo and redo for the open project: a burst of changes (one drag, a few words typed) is one step.
 
 import { useRef, useState } from 'react'
-import type { Project } from './project'
+import type { Project } from '../model/project'
 
 export type Updater<T> = (fn: (v: T) => T) => void
 

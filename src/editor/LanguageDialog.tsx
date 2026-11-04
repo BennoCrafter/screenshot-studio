@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LANGUAGES, languageName } from './project'
+import { LANGUAGES, languageName } from '../model/project'
 
 const localNames = new Intl.DisplayNames(undefined, { type: 'language' })
 const englishNames = new Intl.DisplayNames(['en'], { type: 'language' })

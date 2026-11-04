@@ -49,7 +49,7 @@ const vite = await createServer({
     'export function renderDevice() { return { width: 1, height: 1, flatHeight: 1, canvas: null } }\nfunction unused(') : undefined }],
 })
 try {
-  const { fromOpenScrGen, asTemplate } = await vite.ssrLoadModule('/src/openscrgen.ts')
+  const { fromOpenScrGen, asTemplate } = await vite.ssrLoadModule('/src/model/openscrgen.ts')
   const { data, author } = await source()
   const project = await fromOpenScrGen(data)
 

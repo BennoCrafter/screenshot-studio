@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { ask, openTextFile } from './native'
-import { deleteProject, listProjects, PROJECT_FILE, when, withFonts, type Project, type ProjectSummary } from './project'
-import { PLATFORMS, type Platform } from './render'
-import { loadStore, STORE, storeTemplate } from './openscrgen'
+import { ask, openTextFile } from '../lib/native'
+import { deleteProject, listProjects, PROJECT_FILE, when, withFonts, type Project, type ProjectSummary } from '../model/project'
+import { PLATFORMS, type Platform } from '../model/render'
+import { loadStore, STORE, storeTemplate } from '../model/openscrgen'
 import { BigPreview, StoreCard, TemplateCard } from './TemplateGallery'
-import { ALL_PLATFORMS, BUILT_IN, toTarget, useCustomTemplates, type Template } from './templates'
+import { ALL_PLATFORMS, BUILT_IN, toTarget, useCustomTemplates, type Template } from '../model/templates'
 
 type Tab = 'all' | Platform | 'store' // store: Open Screenshot Generator's templates
 

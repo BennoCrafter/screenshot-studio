@@ -2,11 +2,11 @@
 // items, and device pose, and optionally its screenshots and images (as data URLs).
 
 import { useEffect, useState } from 'react'
-import { DEVICE_BY_ID, restFold } from './devices/models'
-import { renderDevice, type DevicePose } from './devices/render3d'
-import { isDesktop, openLink, saveFile } from './native'
+import { DEVICE_BY_ID, restFold } from '../devices/models'
+import { renderDevice, type DevicePose } from '../devices/render3d'
+import { isDesktop, openLink, saveFile } from '../lib/native'
 import { imageUrl, loadImage, type ProjectFont } from './project'
-import builtinTemplates from './builtin/templates.json'
+import builtinTemplates from '../builtin/templates.json'
 import { FONT, PLATFORMS, SIZES, sizeOf, THEMES, wrap, type Item, type Platform, type SizeName, type Slide, type Style, type Target } from './render'
 
 type Shot = string | null // a screenshot or image as a data URL, in templates that keep them
@@ -134,7 +134,7 @@ export const BUILT_IN: Template[] = [
   ...(builtinTemplates as Design[]).map((d) =>
     design(d.id, d.name, d.description, d.slides.map((s) => ({ ...s, style: THEMES[d.theme] })), d.platforms, d.perPlatform)),
   // shared by the community: templates/*.json in the repo, added by the app's pull requests
-  ...Object.values(import.meta.glob<Template>('../templates/*.json', { eager: true, import: 'default' })),
+  ...Object.values(import.meta.glob<Template>('../../templates/*.json', { eager: true, import: 'default' })),
 ]
 export const BLANK = BUILT_IN.find((t) => t.id === 'blank')!
 
@@ -289,7 +289,7 @@ export type Theme = Style & { name: string; custom?: true }
 export const loadThemes = async (): Promise<Theme[]> => [
   ...Object.entries(THEMES).map(([name, s]) => ({ name, ...s })),
   // shared by the community: themes/*.json in the repo, added by the app's pull requests
-  ...Object.values(import.meta.glob<Theme>('../themes/*.json', { eager: true, import: 'default' })),
+  ...Object.values(import.meta.glob<Theme>('../../themes/*.json', { eager: true, import: 'default' })),
   ...(await list<Theme>('themes.json')).map((t) => ({ ...t, custom: true as const })),
 ]
 /** Adds or replaces (by name) one of the user's themes. */

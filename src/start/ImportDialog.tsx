@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { languagesOf, languageName, when, type Project, type ProjectSummary } from './project'
-import { PLATFORMS } from './render'
+import { languagesOf, languageName, when, type Project, type ProjectSummary } from '../model/project'
+import { PLATFORMS } from '../model/render'
 
 export interface Import { file: Project; existing?: ProjectSummary; n: number }
 

@@ -96,30 +96,17 @@ Other scripts: `pnpm build` (type check plus production web build into `dist/`) 
 
 ```
 src/
-  App.tsx              start page or editor; autosave
-  StartPage.tsx        new project, open file, recent projects (TemplateGallery.tsx: template previews)
-  ImportDialog.tsx     opening a project file: name it, or replace the copy already here
-  Editor.tsx           slide editor: selection, keyboard shortcuts, slide list, menus
-  Inspector.tsx        right panel: the picked elements' and slides' settings
-  Palette.tsx          left panel: what can be added to a slide, and the slide's layers
-  Board.tsx            the zoomable, pannable canvas the slides sit on
-  SlideCanvas.tsx      one slide in the editor, with handles for moving, resizing, rotating and typing
-  LanguageDialog.tsx   adding a language; Themes.tsx: theme picker; Export.tsx: PNGs, website, templates
-  Settings.tsx         app settings and the MCP setup; Chat.tsx: the agent chat in the editor sidebar
-  ui.tsx               shared icon, menu and panel resizer
-  history.ts           undo and redo
-  render.ts            the draw function shared by preview and export; platforms and sizes
-  elements.ts          what can be done to one element of a slide (each returns a patch)
+  main.tsx, App.tsx    entry; start page or editor, autosave
+  start/               start page, template gallery, opening a project file
+  editor/              the editor: board, slide canvas, inspector, palette, themes, language dialog, undo history
+  export/              export dialog (PNGs, templates) and the exported website
+  agent/               MCP tools (tools.ts), answering requests the Rust side forwards (agent.ts), and the agent chat
+  settings/            app settings and the MCP setup; prefs.ts: preferences kept in localStorage
+  model/               projects and storage, slides and their elements, the draw function shared by preview and
+                       export, templates and themes, Open Screenshot Generator import, the screenshot folder
   devices/             device models and the 3D frame renderer (three.js)
-  templates.ts         built-in, saved and shared templates and themes
-  project.ts           storage, plus .ssproj import and export
-  openscrgen.ts        reading Open Screenshot Generator projects
-  shotFolder.ts        the screenshot folder that replaces screenshots by ID
-  website.ts           the exported web page (website.html is its template)
-  native.ts            where browser and desktop differ: dialogs, saving and opening files
-  prefs.ts             preferences kept in localStorage
-  agent.ts, tools.ts   the MCP server's tools, answering requests the Rust side forwards
-  motion.ts            animated view transitions
+  lib/                 where browser and desktop differ (native.ts); animated view transitions (motion.ts)
+  builtin/             built-in templates, themes and filler screenshots
 src-tauri/             Tauri desktop shell; src/lib.rs has the MCP HTTP server and runs the agent CLI, src/cli.rs the command line
 scripts/               bump and release, Apple signing secrets, Open Screenshot Generator conversion
 ```

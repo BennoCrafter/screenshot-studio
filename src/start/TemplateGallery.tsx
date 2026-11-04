@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { loadImage, withFonts, type ProjectFont } from './project'
-import { drawSlide, layersOf, PLATFORMS, sizeOf, type Platform, type Slide } from './render'
-import { toTarget, type Template, type TargetData } from './templates'
-import macShot from './builtin/fillers/mac.jpg'
+import { loadImage, withFonts, type ProjectFont } from '../model/project'
+import { drawSlide, layersOf, PLATFORMS, sizeOf, type Platform, type Slide } from '../model/render'
+import { toTarget, type Template, type TargetData } from '../model/templates'
+import macShot from '../builtin/fillers/mac.jpg'
 
 // filler screenshots, so a preview's devices show an app instead of a blank screen (credits in builtin/fillers/)
-const PHONE_SHOTS = Object.values(import.meta.glob<string>('./builtin/fillers/phone-*.jpg', { eager: true, query: '?url', import: 'default' }))
+const PHONE_SHOTS = Object.values(import.meta.glob<string>('../builtin/fillers/phone-*.jpg', { eager: true, query: '?url', import: 'default' }))
 const load = (urls: string[]) => Promise.all(urls.map(async (u) => loadImage(await (await fetch(u)).blob())))
 let fillers: Promise<{ phone: HTMLImageElement[]; mac: HTMLImageElement[] }> | undefined
 const getFillers = () => (fillers ??= Promise.all([load(PHONE_SHOTS), load([macShot])]).then(([phone, mac]) => ({ phone, mac })))

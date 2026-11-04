@@ -1,14 +1,14 @@
 // The MCP tools: each reads or changes the live project through the Host.
 
-import { DEVICES, DEVICE_BY_ID } from './devices/models'
-import { deleteProject, fontFamily, fontFrom, LANGUAGES, languagesOf, listProjects, loadImage, openProject, projectToFile, saveProject, type Project } from './project'
-import { syncShotFolder, takeReport } from './shotFolder'
-import { typeOfName } from './native'
-import { FONTS, layersOf, localize, PLATFORMS, renderSlide, SIZES, sizeOf, THEMES, type Item, type Style, type Platform, type Slide, type Target } from './render'
-import { labelOf, replaceShots, shotIdsOf } from './elements'
-import { SHAPES } from './shapes'
-import type { DevicePose } from './devices/render3d'
-import { ALL_PLATFORMS, BLANK, BUILT_IN, loadCustom, loadThemes, poseFor, saveTheme, toTarget } from './templates'
+import { DEVICES, DEVICE_BY_ID } from '../devices/models'
+import { deleteProject, fontFamily, fontFrom, LANGUAGES, languagesOf, listProjects, loadImage, openProject, projectToFile, saveProject, type Project } from '../model/project'
+import { syncShotFolder, takeReport } from '../model/shotFolder'
+import { typeOfName } from '../lib/native'
+import { FONTS, layersOf, localize, PLATFORMS, renderSlide, SIZES, sizeOf, THEMES, type Item, type Style, type Platform, type Slide, type Target } from '../model/render'
+import { labelOf, replaceShots, shotIdsOf } from '../model/elements'
+import { SHAPES } from '../model/shapes'
+import type { DevicePose } from '../devices/render3d'
+import { ALL_PLATFORMS, BLANK, BUILT_IN, loadCustom, loadThemes, poseFor, saveTheme, toTarget } from '../model/templates'
 import type { Host } from './agent'
 
 export type Json = Record<string, unknown>

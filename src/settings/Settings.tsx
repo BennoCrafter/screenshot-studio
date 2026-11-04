@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { claudeLinked, MCP_URL } from './agent'
-import { isDesktop, openLink, tell } from './native'
+import { claudeLinked, MCP_URL } from '../agent/agent'
+import { isDesktop, openLink, tell } from '../lib/native'
 import { applyAppearance, applyMcpAccess, effortName, MODES, modelOf, storedAppearance, storedOthers, useModels, useStored, type Appearance } from './prefs'
-import type { Project } from './project'
-import { PLATFORMS, SIZES, type SizeName } from './render'
+import type { Project } from '../model/project'
+import { PLATFORMS, SIZES, type SizeName } from '../model/render'
 
 /** How to add the server to each MCP client; any client that speaks streamable HTTP works. */
 const CLIENTS = {

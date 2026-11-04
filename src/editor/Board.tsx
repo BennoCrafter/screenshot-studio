@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { typing } from './native'
-import { clamp } from './render'
+import { typing } from '../lib/native'
+import { clamp } from '../model/render'
 
 /**
  * An infinite board: Ctrl/⌘ + scroll or a trackpad pinch zooms at the cursor, scroll pans (Shift + scroll sideways),

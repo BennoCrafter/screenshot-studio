@@ -1,10 +1,10 @@
 // The editor's left panel parts: what can be added to a slide, and the picked slide's layers.
 
-import { IMAGE_FILES, openFiles } from './native'
-import { loadImage } from './project'
-import { SHAPES } from './shapes'
-import { newItem, partName, restack } from './elements'
-import { layersOf, type Item, type Part, type Slide } from './render'
+import { IMAGE_FILES, openFiles } from '../lib/native'
+import { loadImage } from '../model/project'
+import { SHAPES } from '../model/shapes'
+import { newItem, partName, restack } from '../model/elements'
+import { layersOf, type Item, type Part, type Slide } from '../model/render'
 import { Icon } from './ui'
 
 /** Texts with their size and weight set, as the templates use them. */

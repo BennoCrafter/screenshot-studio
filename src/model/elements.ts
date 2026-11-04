@@ -1,6 +1,6 @@
 // What can be done to one element of a slide, whichever kind it is. Each returns a patch for the slide.
 
-import type { DevicePose } from './devices/render3d'
+import type { DevicePose } from '../devices/render3d'
 import { layersOf, PLATFORMS, type Item, type Part, type Slide } from './render'
 import { languagesOf, type Project } from './project'
 import { SHAPES } from './shapes'

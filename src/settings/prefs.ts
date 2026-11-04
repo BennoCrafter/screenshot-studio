@@ -1,7 +1,7 @@
 // Preferences kept in localStorage and shared live between the parts of the app that show them.
 
 import { useEffect, useState } from 'react'
-import { isDesktop } from './native'
+import { isDesktop } from '../lib/native'
 
 // The agent's permission modes. Anything a mode doesn't allow on its own comes to the chat for Allow / Deny.
 export const MODES = { manual: 'Ask every time', acceptEdits: 'Auto-accept edits', auto: 'Auto', bypassPermissions: 'Allow everything' }

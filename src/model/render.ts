@@ -1,6 +1,6 @@
-import { renderDevice, type DevicePose } from './devices/render3d'
+import { renderDevice, type DevicePose } from '../devices/render3d'
 import { drawShape, SHAPES, type Shape } from './shapes'
-import builtinThemes from './builtin/themes.json'
+import builtinThemes from '../builtin/themes.json'
 
 // One draw function for both preview and export, so what you see is exactly what you get.
 

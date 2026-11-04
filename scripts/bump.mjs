@@ -5,7 +5,7 @@ const FILES = [
   ['src-tauri/tauri.conf.json', /("version": ")([^"]+)(")/],
   ['src-tauri/Cargo.toml', /^(version = ")([^"]+)(")/m],
   ['package.json', /("version": ")([^"]+)(")/],
-  ['src/agent.ts', /(serverInfo: \{ name: 'screenshot-studio', version: ')([^']+)(')/],
+  ['src/agent/agent.ts', /(serverInfo: \{ name: 'screenshot-studio', version: ')([^']+)(')/],
 ]
 
 const read = (f) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8')

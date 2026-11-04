@@ -2,8 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
-import { isDesktop } from './native'
-import { applyAppearance, applyMcpAccess } from './prefs'
+import { isDesktop } from './lib/native'
+import { applyAppearance, applyMcpAccess } from './settings/prefs'
 
 // the desktop window is see-through glass; the editor paints over it, the launcher lets it show
 // (macOS only: elsewhere the window has a normal title bar and no glass effect)

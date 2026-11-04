@@ -3,7 +3,7 @@
 
 import { replaceShots } from './elements'
 import { loadImage, type Project } from './project'
-import { accepts, IMAGE_FILES, typeOfName } from './native'
+import { accepts, IMAGE_FILES, typeOfName } from '../lib/native'
 
 const fs = () => import('@tauri-apps/plugin-fs')
 

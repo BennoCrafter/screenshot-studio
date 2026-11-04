@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ask } from './native'
-import { renderSlide, type Slide, type Style } from './render'
-import { deleteTheme, loadThemes, saveTheme, shareTheme, type Theme } from './templates'
+import { ask } from '../lib/native'
+import { renderSlide, type Slide, type Style } from '../model/render'
+import { deleteTheme, loadThemes, saveTheme, shareTheme, type Theme } from '../model/templates'
 
 const PREVIEW_W = 220 // px it's rendered at, enough for the editor's big preview on a retina screen
 

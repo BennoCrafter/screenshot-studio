@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { serveAgent } from './agent'
-import { Editor } from './Editor'
-import { ImportDialog, type Import } from './ImportDialog'
-import { animate } from './motion'
-import { isDesktop, tell } from './native'
-import { listProjects, openProject, projectFromFile, saveProject, thumbnail, type Project } from './project'
-import { Settings } from './Settings'
-import { StartPage } from './StartPage'
+import { serveAgent } from './agent/agent'
+import { Editor } from './editor/Editor'
+import { ImportDialog, type Import } from './start/ImportDialog'
+import { animate } from './lib/motion'
+import { isDesktop, tell } from './lib/native'
+import { listProjects, openProject, projectFromFile, saveProject, thumbnail, type Project } from './model/project'
+import { Settings } from './settings/Settings'
+import { StartPage } from './start/StartPage'
 
 const save = (p: Project) =>
   saveProject({ ...p, updated: Date.now(), thumb: thumbnail(document.querySelector('canvas[data-slide]')) })

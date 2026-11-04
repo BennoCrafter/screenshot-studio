@@ -1,5 +1,5 @@
 import page from './website.html?raw'
-import { toDataUrl } from './project'
+import { toDataUrl } from '../model/project'
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`)
 

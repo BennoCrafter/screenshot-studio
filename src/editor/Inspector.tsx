@@ -1,13 +1,13 @@
 // The editor's right panel: settings of the picked elements and their slides.
 
 import { createContext, useContext, useRef, useState } from 'react'
-import { DEVICES, DEVICE_BY_ID } from './devices/models'
-import type { DevicePose } from './devices/render3d'
-import { FONT_FILES, IMAGE_FILES, openFiles, tell } from './native'
-import { fontFamily, languageName, loadImage, type ProjectFont } from './project'
-import { useStored } from './prefs'
-import { isDevice, itemOf, kindOf, moved, partName, positionOf, shotIdOf, shotOf, withShot, withShotId, type Shot } from './elements'
-import { FONT, FONTS, type Item, type Part, type Slide } from './render'
+import { DEVICES, DEVICE_BY_ID } from '../devices/models'
+import type { DevicePose } from '../devices/render3d'
+import { FONT_FILES, IMAGE_FILES, openFiles, tell } from '../lib/native'
+import { fontFamily, languageName, loadImage, type ProjectFont } from '../model/project'
+import { useStored } from '../settings/prefs'
+import { isDevice, itemOf, kindOf, moved, partName, positionOf, shotIdOf, shotOf, withShot, withShotId, type Shot } from '../model/elements'
+import { FONT, FONTS, type Item, type Part, type Slide } from '../model/render'
 
 /** The picked element's settings (the last one, when several are picked), then the slide's own. */
 export function SlideInspector({ sel, part, lang, setText, fonts, addFont, fontForAll, index, size, update, edit, likes, pickedSlides, updateSlides, shotIdUser, fetchShot }: {

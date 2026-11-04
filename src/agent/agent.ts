@@ -1,8 +1,8 @@
 // The MCP server's brain. src-tauri forwards each JSON-RPC request from any MCP client
 // to here; the tools read and change the live project, so edits show up at once.
 
-import { isDesktop } from './native'
-import type { Project } from './project'
+import { isDesktop } from '../lib/native'
+import type { Project } from '../model/project'
 import { text, TOOLS, type Json } from './tools'
 
 export const MCP_URL = 'http://127.0.0.1:7457/mcp'

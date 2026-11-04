@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { claudeLinked, MCP_URL } from './agent'
 import { APPROVE_TOOL, onApproval, type Approval } from './tools'
-import { extOfType } from './project'
-import { IMAGE_FILES, openFiles } from './native'
-import { effortName, MODES, modelOf, openSettings, storedOthers, useModels, useStored } from './prefs'
+import { extOfType } from '../model/project'
+import { IMAGE_FILES, openFiles } from '../lib/native'
+import { effortName, MODES, modelOf, openSettings, storedOthers, useModels, useStored } from '../settings/prefs'
 
 // Chat with an AI agent, run by the desktop app (currently the `claude` CLI) and connected to this
 // app's MCP server, so it can change the project while you watch.

@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { DEVICE_BY_ID, restFold } from './devices/models'
-import type { DevicePose } from './devices/render3d'
-import { loadImage } from './project'
-import { accepts, IMAGE_FILES } from './native'
-import { shotOf, type Shot } from './elements'
-import { clamp, drawSlide, layersOf, type Anchor, type Part, type Slide } from './render'
+import { DEVICE_BY_ID, restFold } from '../devices/models'
+import type { DevicePose } from '../devices/render3d'
+import { loadImage } from '../model/project'
+import { accepts, IMAGE_FILES } from '../lib/native'
+import { shotOf, type Shot } from '../model/elements'
+import { clamp, drawSlide, layersOf, type Anchor, type Part, type Slide } from '../model/render'
 
 const wrap180 = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180
 const snap = (v: number, on: boolean) => (on ? Math.round(v / 15) * 15 : Math.round(v))
