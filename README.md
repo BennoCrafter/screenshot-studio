@@ -58,6 +58,7 @@ The desktop app runs an MCP server (streamable HTTP) at `http://127.0.0.1:7457/m
   screenshot-studio export TrackStar out iphone            # PNGs of a saved project by name; platform optional
   screenshot-studio export TrackStar TrackStar.ssproj      # the project file
   screenshot-studio update_screenshots '{"screenshots":{"home":"/tmp/home.png"}}'   # by screenshot ID, in the open project
+  screenshot-studio update_screenshots project=TrackStar screenshots='{"home":"/tmp/home.png"}'   # in a saved project by name
   screenshot-studio update_screenshots                     # without IDs: apply every project's screenshot folder; prints what changed
   ```
 

@@ -76,41 +76,20 @@ fn run(args: &[String]) -> Result<(), String> {
     }
 }
 
-/// Opens the project of that name, exports it, and puts back what was open.
+/// Exports a saved project by name: its PNGs, or the project file.
 fn export(rest: &[String]) -> Result<(), String> {
     let (Some(name), dir, platform) = (rest.first(), rest.get(1).map_or(".", String::as_str), rest.get(2)) else {
         return Err("Usage: screenshot-studio export <project name> [dir] [platform]".into());
     };
-    let state: Value = serde_json::from_str(tool("get_state", json!({}), true)?["content"][0]["text"].as_str().unwrap_or("{}")).map_err(|e| e.to_string())?;
-    let projects = state["recentProjects"].as_array().cloned().unwrap_or_default();
-    let named = |p: &&Value, exact: bool| p["name"].as_str().is_some_and(|n| if exact { n == name } else { n.eq_ignore_ascii_case(name) });
-    let mut found: Vec<&Value> = projects.iter().filter(|p| named(p, true)).collect();
-    if found.is_empty() {
-        found = projects.iter().filter(|p| named(p, false)).collect();
-    }
-    let [project] = found[..] else {
-        let names: Vec<&str> = projects.iter().filter_map(|p| p["name"].as_str()).collect();
-        return Err(format!("{} projects named {name}. Projects: {}", if found.is_empty() { "No" } else { "Several" }, names.join(", ")));
-    };
     let dir = std::path::absolute(dir).map_err(|e| e.to_string())?;
     if dir.extension().is_some_and(|e| e == "ssproj") {
-        return tool("save_project_file", json!({ "id": project["id"], "path": dir.to_string_lossy() }), false).map(|_| ());
+        return tool("save_project_file", json!({ "project": name, "path": dir.to_string_lossy() }), false).map(|_| ());
     }
-    let mut a = json!({ "dir": dir.to_string_lossy() });
+    let mut a = json!({ "project": name, "dir": dir.to_string_lossy() });
     if let Some(p) = platform {
         a["platform"] = json!(p);
     }
-
-    let before = state["openProject"]["id"].as_str();
-    tool("open_project", json!({ "id": project["id"] }), true)?;
-    let result = tool("export_pngs", a, false);
-    if before != project["id"].as_str() {
-        match before {
-            Some(id) => tool("open_project", json!({ "id": id }), true)?,
-            None => tool("close_project", json!({}), true)?,
-        };
-    }
-    result.map(|_| ())
+    tool("export_pngs", a, false).map(|_| ())
 }
 
 /// The tool's arguments: key=value pairs, one JSON object, or JSON on stdin.

@@ -29,6 +29,24 @@ function current(host: Host): Project {
   return p
 }
 
+/** The saved project with that id or name (exact, else ignoring case). */
+async function projectNamed(key: string) {
+  const all = await listProjects()
+  const exact = all.filter((p) => p.id === key || p.name === key)
+  const found = exact.length ? exact : all.filter((p) => p.name.toLowerCase() === key.toLowerCase())
+  if (found.length !== 1) throw new Error(`${found.length ? 'Several' : 'No'} projects named ${key}. Projects: ${all.map((p) => p.name).join(', ')}`)
+  return found[0]
+}
+
+/** The project the project argument names, read from disk unless it's the open one; else the open one. */
+async function projectArg(host: Host, key: unknown): Promise<Project> {
+  if (key === undefined) return current(host)
+  const { id } = await projectNamed(String(key))
+  return host.project()?.id === id ? current(host) : openProject(id)
+}
+
+const projectProp = { type: 'string', description: 'Name or id of a saved project; default: the open one' }
+
 function targetOf(p: Project, platform?: string): Target {
   const t = platform ? p.targets.find((t) => t.platform === platform) : p.targets[0]
   if (!t) throw new Error(`The project has no ${platform} slides. It has: ${p.targets.map((t) => t.platform).join(', ')}`)
@@ -215,34 +233,40 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
   },
   {
     name: 'update_screenshots',
-    description: `Update screenshots, for automations that re-shoot the app. With screenshots, replace them by screenshot ID (the shotId the user gave images and devices, on any platform and slide) in the open project: every element with a listed ID gets the new screenshot; each language has its own IDs (translations[code].shots[part].shotId), so an ID also picks the language. Without, apply the new and changed files in every project's screenshot folder (desktop; set in Settings › Project) now, saving projects that aren't open. Reports what changed (for folders, since the last call, also what the open project picked up by itself) and which IDs matched nothing.`,
+    description: `Update screenshots, for automations that re-shoot the app. With screenshots, replace them by screenshot ID (the shotId the user gave images and devices, on any platform and slide) in one project (the open one unless project is given): every element with a listed ID gets the new screenshot; each language has its own IDs (translations[code].shots[part].shotId), so an ID also picks the language. Without, apply the new and changed files in every project's screenshot folder, or only that project's (desktop; set in Settings › Project), now, saving projects that aren't open. Reports what changed (for folders, since the last call, also what the open project picked up by itself) and which IDs matched nothing.`,
     inputSchema: {
       type: 'object',
       properties: {
         screenshots: { type: 'object', additionalProperties: { type: 'string' }, description: '{ "<screenshot id>": "<absolute path or http(s) URL of a PNG, JPEG, WebP or SVG>" }; leave out to apply every screenshot folder' },
+        project: { type: 'string', description: 'Name or id of a saved project; default: the open one with screenshots, every one without' },
       },
     },
     run: async (host, a) => {
+      const only = a.project === undefined ? undefined : await projectNamed(String(a.project))
       if (a.screenshots !== undefined) {
-        const p = current(host)
+        const open = !only || host.project()?.id === only.id
+        const p = open ? current(host) : await openProject(only.id)
         const given = Object.entries((a.screenshots ?? {}) as Record<string, unknown>)
         if (!given.length || given.some(([, v]) => typeof v !== 'string')) throw new Error('screenshots must map screenshot IDs to file paths or URLs')
         // only load images that something uses, all before changing anything, so a bad path changes nothing
         const used = new Set(shotIdsOf(p).map((x) => x.id))
         const images = new Map(await Promise.all(given.filter(([id]) => used.has(id)).map(async ([id, path]) => [id, await imageFrom(path as string)] as const)))
         const { project, done } = replaceShots(p, images)
-        host.setProject(project)
+        await (open ? host.setProject(project) : saveProject(project))
         const missing = given.map(([id]) => id).filter((id) => !images.has(id))
         return text([`Replaced ${done.length} screenshot${done.length === 1 ? '' : 's'}:`, ...done,
           ...(missing.length ? [`No element has these IDs: ${missing.join(', ')}`] : [])].join('\n'))
       }
       const out: string[] = []
       // shortcut: opens every project to read its screenshot folder; keep the folder in the summary if that gets slow
-      for (const { id, name } of await listProjects()) {
+      for (const { id, name } of only ? [only] : await listProjects()) {
         try {
           const open = host.project()?.id === id
           let p = open ? current(host) : await openProject(id)
-          if (!p.shotFolder) continue
+          if (!p.shotFolder) {
+            if (only) out.push(`${name} has no screenshot folder.`)
+            continue
+          }
           const { done, unused } = await syncShotFolder(() => p, (fn) => (p = fn(p)))
           if (done.length) await (open ? host.setProject(p) : saveProject(p))
           const lines = [...takeReport(id), ...(unused.length ? [`No element has the screenshot ID of ${unused.join(', ')}`] : [])]
@@ -333,10 +357,10 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
   },
   {
     name: 'export_pngs',
-    description: 'Write every slide in every language at full App Store resolution as PNG files into a folder (created if missing). Returns the file paths.',
-    inputSchema: { type: 'object', properties: { dir: { type: 'string', description: 'Absolute folder path' }, platform: { ...platformArg, description: 'Omit to export all platforms.' } }, required: ['dir'] },
+    description: 'Write every slide in every language at full App Store resolution as PNG files into a folder (created if missing). Exports the open project, or a saved one without opening it. Returns the file paths.',
+    inputSchema: { type: 'object', properties: { dir: { type: 'string', description: 'Absolute folder path' }, platform: { ...platformArg, description: 'Omit to export all platforms.' }, project: projectProp }, required: ['dir'] },
     run: async (host, a) => {
-      const p = current(host)
+      const p = await projectArg(host, a.project)
       const { mkdir, writeFile } = await import('@tauri-apps/plugin-fs')
       const dir = (a.dir as string).replace(/\/$/, '')
       await mkdir(dir, { recursive: true })
@@ -356,10 +380,10 @@ image / outerImage: true keeps the current screenshot, false removes it, a strin
   },
   {
     name: 'save_project_file',
-    description: 'Save a project as a .ssproj file (one JSON file with its screenshots and fonts inside), for backup or sharing. Saves the open project, or a saved one by id without opening it.',
-    inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Absolute file path, ending in .ssproj' }, id: { type: 'string', description: 'Project id from recentProjects; defaults to the open project.' } }, required: ['path'] },
+    description: 'Save a project as a .ssproj file (one JSON file with its screenshots and fonts inside), for backup or sharing. Saves the open project, or a saved one without opening it.',
+    inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Absolute file path, ending in .ssproj' }, project: projectProp }, required: ['path'] },
     run: async (host, a) => {
-      const p = !a.id || host.project()?.id === a.id ? current(host) : await openProject(a.id as string)
+      const p = await projectArg(host, a.project)
       const { writeFile } = await import('@tauri-apps/plugin-fs')
       await writeFile(a.path as string, new Uint8Array(await (await projectToFile(p)).arrayBuffer()))
       return text(a.path)
