@@ -23,7 +23,7 @@
 - **One project, several platforms**: iPhone, iPad and Mac sets side by side. A new platform starts from an existing one's slides.
 - **App Store sizes**: iPhone 6.9", 6.3", 6.5"; iPad 13", 11"; Mac 2880×1800 down to 1280×800.
 - **3D device frames** with pose, size and finish controls, including foldables with an outer display.
-- **Templates**: built-in designs, plus your own saved from any project (Export → Template), with or without its screenshots. Tick **Share with everyone** and the app opens a pull request adding it to `templates/` in this repo, using your GitHub CLI login.
+- **Templates**: built-in designs, plus your own saved from any project (Export → Template), with or without its screenshots. Tick **Share with everyone** and the app opens GitHub's web editor with the template filled in, so you can propose it for `templates/` in this repo.
 - **Languages**: add App Store localizations (German, English, Japanese and so on) to a project. Each language has its own headline, subtitle and texts, and can have its own screenshots (a language without one shows the primary language's). Everything else (devices, colors, layout) is shared, so a change shows up in every language.
 - **Export** PNGs of the slides and languages you pick. The desktop app writes them all to a folder you pick. Or export one web page that shows them all, with platform and language filters and a click-to-enlarge view.
 - **Project files** (`.ssproj`): one JSON file with the screenshots inside, for backup or sharing.
@@ -96,18 +96,32 @@ Other scripts: `pnpm build` (type check plus production web build into `dist/`) 
 
 ```
 src/
-  App.tsx            start page or editor; autosave
-  StartPage.tsx      new project, open file, recent projects
-  Editor.tsx         slide editor, platforms, export
-  render.ts          the draw function shared by preview and export; platforms and sizes
-  devices/           device models and the 3D frame renderer (three.js)
-  templates.ts       built-in and saved templates
-  project.ts         storage, plus .ssproj import and export
-  native.ts          where browser and desktop differ: dialogs, saving and opening files
-  agent.ts           MCP tools, answering requests the Rust side forwards
-  Chat.tsx           the agent chat, a tab of the editor sidebar
-  motion.ts          animated view transitions
-src-tauri/           Tauri desktop shell; src/lib.rs has the MCP HTTP server and runs the agent CLI
+  App.tsx              start page or editor; autosave
+  StartPage.tsx        new project, open file, recent projects (TemplateGallery.tsx: template previews)
+  ImportDialog.tsx     opening a project file: name it, or replace the copy already here
+  Editor.tsx           slide editor: selection, keyboard shortcuts, slide list, menus
+  Inspector.tsx        right panel: the picked elements' and slides' settings
+  Palette.tsx          left panel: what can be added to a slide, and the slide's layers
+  Board.tsx            the zoomable, pannable canvas the slides sit on
+  SlideCanvas.tsx      one slide in the editor, with handles for moving, resizing, rotating and typing
+  LanguageDialog.tsx   adding a language; Themes.tsx: theme picker; Export.tsx: PNGs, website, templates
+  Settings.tsx         app settings and the MCP setup; Chat.tsx: the agent chat in the editor sidebar
+  ui.tsx               shared icon, menu and panel resizer
+  history.ts           undo and redo
+  render.ts            the draw function shared by preview and export; platforms and sizes
+  elements.ts          what can be done to one element of a slide (each returns a patch)
+  devices/             device models and the 3D frame renderer (three.js)
+  templates.ts         built-in, saved and shared templates and themes
+  project.ts           storage, plus .ssproj import and export
+  openscrgen.ts        reading Open Screenshot Generator projects
+  shotFolder.ts        the screenshot folder that replaces screenshots by ID
+  website.ts           the exported web page (website.html is its template)
+  native.ts            where browser and desktop differ: dialogs, saving and opening files
+  prefs.ts             preferences kept in localStorage
+  agent.ts, tools.ts   the MCP server's tools, answering requests the Rust side forwards
+  motion.ts            animated view transitions
+src-tauri/             Tauri desktop shell; src/lib.rs has the MCP HTTP server and runs the agent CLI, src/cli.rs the command line
+scripts/               bump and release, Apple signing secrets, Open Screenshot Generator conversion
 ```
 
 ## License

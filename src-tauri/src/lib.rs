@@ -277,29 +277,6 @@ fn open_url(url: String) -> Result<(), String> {
     Command::new(opener).arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
-const NO_GH: &str = "The GitHub CLI isn't installed. Get it from https://cli.github.com and run `gh auth login`.";
-
-/// Runs the GitHub CLI with `input` on stdin; its output, or why it failed.
-#[tauri::command]
-async fn gh(args: Vec<String>, input: Option<String>) -> Result<String, String> {
-    use std::io::Write;
-    let mut child = cli("gh")
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| if e.kind() == std::io::ErrorKind::NotFound { NO_GH.into() } else { e.to_string() })?;
-    let mut stdin = child.stdin.take().unwrap();
-    std::thread::spawn(move || stdin.write_all(input.unwrap_or_default().as_bytes()));
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
-    match out.status.code() {
-        Some(0) => Ok(String::from_utf8_lossy(&out.stdout).trim().into()),
-        Some(127) => Err(NO_GH.into()),
-        _ => Err(String::from_utf8_lossy(&out.stderr).lines().filter(|l| !l.contains("job control")).collect::<Vec<_>>().join("\n")),
-    }
-}
-
 #[tauri::command]
 fn agent_stop() {
     if let Some(mut c) = CHAT.lock().unwrap().take() {
@@ -333,7 +310,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![mcp_respond, agent_chat, agent_models, agent_stop, claude_mcp_added, claude_mcp_remove, open_url, gh, mcp_chat_token, mcp_allow_others, take_opened_files])
+        .invoke_handler(tauri::generate_handler![mcp_respond, agent_chat, agent_models, agent_stop, claude_mcp_added, claude_mcp_remove, open_url, mcp_chat_token, mcp_allow_others, take_opened_files])
         .setup(|app| {
             let menu = Menu::default(app.handle())?;
             if let Some(MenuItemKind::Submenu(first)) = menu.items()?.into_iter().next() {
