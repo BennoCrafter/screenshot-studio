@@ -7,6 +7,7 @@ A React + TypeScript app (Vite) for making App Store screenshots, shipped as a T
 ```sh
 pnpm dev                          # browser version at http://localhost:5173
 pnpm desktop                      # desktop app (needs Rust)
+pnpm cli tools                    # the command line (src-tauri/src/cli.rs) against the running app
 npx tsc -p tsconfig.app.json      # type check (`tsc -p .` checks nothing: the root tsconfig only has references)
 pnpm lint                         # oxlint; keep it at zero warnings
 pnpm build                        # type check plus production build
