@@ -212,3 +212,35 @@ fn connect() -> Result<(), String> {
         }
     }
 }
+
+// ---- installing it ----------------------------------------------------------------------
+
+const LINK: &str = "/usr/local/bin/screenshot-studio";
+
+/// Whether `screenshot-studio` on the PATH is this app (macOS).
+#[tauri::command]
+pub fn cli_linked() -> bool {
+    std::fs::read_link(LINK).ok().zip(std::env::current_exe().ok()).is_some_and(|(l, e)| l == e)
+}
+
+/// The shell command that does what cli_link does, for people who'd rather run it themselves.
+#[tauri::command]
+pub fn cli_command() -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    Ok(format!("sudo mkdir -p /usr/local/bin && sudo ln -sf '{}' {LINK}", exe.to_string_lossy().replace('\'', r"'\''")))
+}
+
+/// Links `screenshot-studio` in /usr/local/bin to this app, asking for an admin password when the folder needs one (macOS).
+#[tauri::command]
+pub fn cli_link() -> Result<(), String> {
+    if !cfg!(target_os = "macos") {
+        return Err("Installing the command line is macOS only".into());
+    }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let o = std::process::Command::new("osascript")
+        .args(["-e", "on run argv", "-e", &format!(r#"do shell script "mkdir -p /usr/local/bin && ln -sf " & quoted form of item 1 of argv & " {LINK}" with administrator privileges"#), "-e", "end run"])
+        .arg(exe)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if o.status.success() { Ok(()) } else { Err(String::from_utf8_lossy(&o.stderr).trim().into()) }
+}

@@ -50,11 +50,9 @@ The desktop app runs an MCP server (streamable HTTP) at `http://127.0.0.1:7457/m
   { "mcpServers": { "screenshot-studio": { "type": "http", "url": "http://127.0.0.1:7457/mcp" } } }
   ```
 
-- **From the terminal**: the app itself is a command line for the same tools, for scripts and automations. It starts the app if it isn't running. On macOS, put it on your PATH once:
+- **From the terminal**: the app itself is a command line for the same tools, for scripts and automations. It starts the app if it isn't running. On macOS, click Install under Settings › General › Command line once (it links the app into `/usr/local/bin`):
 
   ```sh
-  ln -s "/Applications/Screenshot Studio.app/Contents/MacOS/app" /usr/local/bin/screenshot-studio
-
   screenshot-studio tools                                  # list tools and their arguments
   screenshot-studio render_slide platform=iphone index=0   # saves render_slide-1.png
   screenshot-studio export TrackStar out iphone            # PNGs of a saved project by name; platform optional

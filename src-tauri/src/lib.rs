@@ -310,7 +310,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![mcp_respond, agent_chat, agent_models, agent_stop, claude_mcp_added, claude_mcp_remove, open_url, mcp_chat_token, mcp_allow_others, take_opened_files])
+        .invoke_handler(tauri::generate_handler![mcp_respond, agent_chat, agent_models, agent_stop, claude_mcp_added, claude_mcp_remove, open_url, mcp_chat_token, mcp_allow_others, take_opened_files, cli::cli_linked, cli::cli_link, cli::cli_command])
         .setup(|app| {
             let menu = Menu::default(app.handle())?;
             if let Some(MenuItemKind::Submenu(first)) = menu.items()?.into_iter().next() {

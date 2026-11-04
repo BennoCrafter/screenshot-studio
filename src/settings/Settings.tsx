@@ -35,6 +35,18 @@ export function Settings({ project, setProject }: { project: Project | null; set
     await (await import('@tauri-apps/api/core')).invoke('claude_mcp_remove').catch((e) => tell(`Couldn't disconnect: ${e}`))
     claudeLinked().then(setLinked)
   }
+  const [cliLinked, setCliLinked] = useState(false)
+  const [cliCommand, setCliCommand] = useState('')
+  const checkCli = async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    setCliLinked(await invoke<boolean>('cli_linked'))
+    setCliCommand(await invoke<string>('cli_command'))
+  }
+  const installCli = async () => {
+    // -128: the password dialog was canceled
+    await (await import('@tauri-apps/api/core')).invoke('cli_link').catch((e) => { if (!String(e).includes('-128')) tell(`Couldn't install the command line: ${e}`) })
+    checkCli()
+  }
   const [others, setOthers] = useState(storedOthers)
   const allowOthers = (on: boolean) => {
     setOthers(on)
@@ -42,7 +54,8 @@ export function Settings({ project, setProject }: { project: Project | null; set
     applyMcpAccess(on)
     window.dispatchEvent(new Event('mcp-changed'))
   }
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState('')
+  const copy = (text: string) => { navigator.clipboard.writeText(text); setCopied(text); setTimeout(() => setCopied(''), 1500) }
   const [client, setClient] = useState<Client>('Claude Code')
   const command = CLIENTS[client]
   const [version, setVersion] = useState('')
@@ -80,6 +93,7 @@ export function Settings({ project, setProject }: { project: Project | null; set
       if (at) setSection(at)
       if (dialog.current!.open) return
       claudeLinked().then(setLinked)
+      if (isDesktop) checkCli()
       dialog.current!.showModal()
       dialog.current!.focus()
     }
@@ -123,7 +137,17 @@ export function Settings({ project, setProject }: { project: Project | null; set
     { id: 'general', label: 'General', icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.8 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.2 14H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z', groups: [
       { rows: [{ title: 'Appearance', hint: 'Light, dark, or follow the system.', keys: 'theme dark light mode color', ui: segmented(appearance, ['system', 'light', 'dark'] as const, pick) },
         { title: 'Screenshot IDs', hint: 'Shows an ID field on devices and images, so automations can replace their screenshots by ID: drop files into the project\'s screenshot folder (set under Project, with a project open) or use the update_screenshots MCP tool.', keys: 'screenshot id automation replace link ci',
-          ui: <input type="checkbox" className="switch" aria-label="Screenshot IDs" checked={showIds === 'on'} onChange={(e) => setShowIds(e.target.checked ? 'on' : 'off')} /> }] },
+          ui: <input type="checkbox" className="switch" aria-label="Screenshot IDs" checked={showIds === 'on'} onChange={(e) => setShowIds(e.target.checked ? 'on' : 'off')} /> },
+        ...(isDesktop && navigator.userAgent.includes('Mac') ? [{ title: 'Command line', hint: `Run the app's tools from a terminal or script, for example screenshot-studio tools. It starts the app if it isn't running. ${cliLinked ? 'Installed in /usr/local/bin.' : 'Installing links the app into /usr/local/bin and asks for your password.'}`, keys: 'cli command line terminal install path shell script screenshot-studio',
+          ui: cliLinked
+            ? <span className="actions stacked"><button className="installed" disabled>✓ Installed</button><button className="link" onClick={installCli}>Reinstall</button></span>
+            : <span className="actions"><button onClick={installCli}>Install</button></span> },
+          { title: 'Or run this in a terminal', wide: true, keys: 'cli command line terminal sudo ln symlink', ui: (
+            <div className="command">
+              <code>{cliCommand}</code>
+              <button onClick={() => copy(cliCommand)}>{copied === cliCommand ? 'Copied' : 'Copy'}</button>
+            </div>
+          ) }] : [])] },
     ] },
     ...(project ? [{ id: 'project', label: 'Project', icon: 'M4 5h16v14H4zM4 9h16', groups: [
       { title: `Export size · ${project.name}`, hint: 'The pixel size PNGs are exported at. The App Store asks for one of these per device class; the first is the one it requires.', rows: project.targets.map((t) => ({
@@ -165,7 +189,7 @@ export function Settings({ project, setProject }: { project: Project | null; set
                 <p className="hint">{client === 'Other (JSON)' ? 'Add this to the client\'s MCP config (Cursor: ~/.cursor/mcp.json; Windsurf, Zed and others take the same entry):' : 'Run this once in a terminal:'}</p>
                 <div className="command">
                   <code>{command}</code>
-                  <button onClick={() => { navigator.clipboard.writeText(command); setCopied(true); setTimeout(() => setCopied(false), 1500) }}>{copied ? 'Copied' : 'Copy'}</button>
+                  <button onClick={() => copy(command)}>{copied === command ? 'Copied' : 'Copy'}</button>
                 </div>
                 {client === 'Claude Code' && <button className="link" onClick={() => claudeLinked().then(setLinked)}>Check again</button>}
               </>
