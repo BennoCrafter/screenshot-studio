@@ -164,7 +164,7 @@ async function googleFont(family: string) {
 /** The store size closest in shape to a board: exact sizes match, others (a watch, an Android phone) take the nearest. */
 function sizeFor(w: number, h: number): { platform: Platform; size: SizeName; landscape?: boolean } {
   const landscape = w > h
-  let best: SizeName = 'iPhone 6.9"', diff = Infinity
+  let best: SizeName = 'iPhone 6.3"', diff = Infinity
   for (const [name, [sw, sh]] of Object.entries(SIZES) as [SizeName, readonly [number, number]][]) {
     if (sw > sh !== landscape) continue
     const d = Math.abs(sw / sh - w / h) + (sw === w && sh === h ? -1 : 0)

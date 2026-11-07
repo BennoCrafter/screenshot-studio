@@ -75,8 +75,8 @@ export type Style = Pick<Slide, 'bg1' | 'bg2' | 'angle' | 'textColor'>
 export const THEMES: Record<string, Style> = builtinThemes // the built-in themes live in builtin/themes.json
 
 export const SIZES = {
-  'iPhone 6.9"': [1320, 2868],
   'iPhone 6.3"': [1206, 2622],
+  'iPhone 6.9"': [1320, 2868],
   'iPhone 6.5"': [1242, 2688],
   'iPhone Duo inner': [2007, 2853],
   'iPhone Duo outer': [1398, 2034],
@@ -94,7 +94,7 @@ export type Platform = 'iphone' | 'duo' | 'ipad' | 'mac'
 
 /** Per platform: its store sizes (first is the default) and the device a new slide starts with. */
 export const PLATFORMS: Record<Platform, { label: string; sizes: SizeName[]; device: Partial<DevicePose> }> = {
-  iphone: { label: 'iPhone', sizes: ['iPhone 6.9"', 'iPhone 6.3"', 'iPhone 6.5"'], device: { model: 'iphone-18-pro-max', finish: 'glacier', size: 0.74 } },
+  iphone: { label: 'iPhone', sizes: ['iPhone 6.3"', 'iPhone 6.9"', 'iPhone 6.5"'], device: { model: 'iphone-18-pro-max', finish: 'glacier', size: 0.74 } },
   duo: { label: 'iPhone Duo', sizes: ['iPhone Duo inner', 'iPhone Duo outer'], device: { model: 'iphone-duo', finish: 'night-sky', size: 0.9 } },
   ipad: { label: 'iPad', sizes: ['iPad 13"', 'iPad 11"'], device: { model: 'ipad-pro-13', finish: 'space-black', size: 0.8 } },
   mac: { label: 'Mac', sizes: ['Mac 2880×1800', 'Mac 2560×1600', 'Mac 1440×900', 'Mac 1280×800'], device: { model: 'macbook-pro-14', finish: 'space-black', size: 0.46, pitch: 14, fold: 110 } },
