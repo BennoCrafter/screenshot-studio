@@ -1,7 +1,8 @@
 // What can be done to one element of a slide, whichever kind it is. Each returns a patch for the slide.
 
 import type { DevicePose } from '../devices/render3d'
-import { layersOf, PLATFORMS, type Item, type Part, type Slide } from './render'
+import { DEVICE_BY_ID } from '../devices/models'
+import { layersOf, PLATFORMS, SIZES, type Item, type Part, type Slide } from './render'
 import { languagesOf, type Project } from './project'
 import { SHAPES } from './shapes'
 
@@ -21,6 +22,15 @@ export type Shot = { device: DevicePose; image: HTMLImageElement | null; outerIm
 export function shotOf(s: Slide, p: Part): Shot {
   const i = p === 'device' ? undefined : itemOf(s, p)
   return i?.device ? { device: i.device, image: i.image ?? null, outerImage: i.outerImage ?? null } : s
+}
+/** Where a new screenshot for `p` goes: a foldable's outer display when it has that display's size (either way round),
+ *  or, at neither display's size, when it's portrait and the device is mostly closed; otherwise the main screen. */
+export function shotFor(s: Slide, p: Part, img: HTMLImageElement): Partial<Shot> {
+  if (p !== 'device' && itemOf(s, p)?.kind !== 'device') return { image: img }
+  const { device } = shotOf(s, p), [w, h] = [img.naturalWidth, img.naturalHeight].sort((a, b) => a - b)
+  const is = ([a, b]: readonly number[]) => w === a && h === b
+  const outer = is(SIZES['iPhone Duo outer']) || (!is(SIZES['iPhone Duo inner']) && img.naturalWidth < img.naturalHeight && device.fold < 90)
+  return DEVICE_BY_ID[device.model]?.outer && outer ? { outerImage: img } : { image: img }
 }
 /** A device element changed; in `lang` (undefined for the primary language) its screenshots are that language's own. */
 export function withShot(s: Slide, p: Part, patch: Partial<Shot>, lang?: string): Partial<Slide> {
@@ -55,7 +65,7 @@ export function replaceShots(p: Project, images: Map<string, HTMLImageElement>) 
       const image = images.get(shotIdOf(s, part, lang) ?? '')
       if (!image) return s
       done.push(`${shotIdOf(s, part, lang)} → ${PLATFORMS[t.platform].label} slide ${i + 1} (${partName(s, part)}${lang ? `, ${lang}` : ''})`)
-      return { ...s, ...withShot(s, part, { image }, lang) }
+      return { ...s, ...withShot(s, part, shotFor(s, part, image), lang) }
     }, s), s)),
   }))
   return { project: { ...p, targets }, done }

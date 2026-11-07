@@ -3,7 +3,7 @@ import { DEVICE_BY_ID, restFold } from '../devices/models'
 import type { DevicePose } from '../devices/render3d'
 import { loadImage } from '../model/project'
 import { accepts, IMAGE_FILES } from '../lib/native'
-import { shotOf, type Shot } from '../model/elements'
+import { shotFor, shotOf, type Shot } from '../model/elements'
 import { clamp, drawSlide, layersOf, type Anchor, type Part, type Slide } from '../model/render'
 
 const wrap180 = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180
@@ -232,15 +232,14 @@ export function SlideCanvas({ slide, size, selected, editing, onPress, onGrab, o
     left: `${(b.x / size[0]) * 100}%`, top: `${(b.y / size[1]) * 100}%`, width: `${(b.w / size[0]) * 100}%`, height: `${(b.h / size[1]) * 100}%`,
   })
   const handlers = { onPointerMove: onMove, onPointerUp: end, onPointerCancel: end }
-  // a screenshot dropped on a device goes to that device (a closed foldable's to its outer display)
+  // a screenshot dropped on a device goes to that device (on a foldable, see shotFor)
   const drop = async (e: React.DragEvent) => {
     e.preventDefault()
     const file = e.dataTransfer.files[0]
     const part = (e.target as HTMLElement).dataset.part ?? 'device'
     if (!file || !accepts(IMAGE_FILES, file.name) || !anchor?.anchors[part]?.dev || !layersOf(slide).includes(part)) return
     const img = await loadImage(file)
-    const shot = shotOf(slide, part)
-    onShot(part, DEVICE_BY_ID[shot.device.model]?.outer && shot.device.fold < 90 ? { outerImage: img } : { image: img })
+    onShot(part, shotFor(slide, part, img))
   }
 
   return (

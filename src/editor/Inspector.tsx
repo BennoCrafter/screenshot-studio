@@ -221,7 +221,14 @@ function DeviceInspector({ sel, device, lang, edit, idField }: { sel: Slide; dev
     <>
       <ShotPicker label={shotLabel('Screenshot', own?.image)} image={own?.image ?? shot.image} set={(image) => setShot({ image })} />
       {model.outer && (
-        <ShotPicker label={shotLabel('Outer screenshot (shown when closed)', own?.outerImage)} image={own?.outerImage ?? shot.outerImage} set={(outerImage) => setShot({ outerImage })} />
+        <>
+          <ShotPicker label={shotLabel('Outer screenshot (shown when closed)', own?.outerImage)} image={own?.outerImage ?? shot.outerImage} set={(outerImage) => setShot({ outerImage })} />
+          <button type="button" className="link" disabled={!(own?.image ?? shot.image) && !(own?.outerImage ?? shot.outerImage)}
+            onClick={() => edit((s, p) => {
+              const sh = shotOf(s, p), o = lang ? s.translations?.[lang]?.shots?.[p] : undefined
+              return withShot(s, p, { image: o?.outerImage ?? sh.outerImage, outerImage: o?.image ?? sh.image }, lang)
+            })}>Swap inner and outer screen</button>
+        </>
       )}
       {idField}
       <label>
